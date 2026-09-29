@@ -1,0 +1,16 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="horizontal" android:gravity="center_vertical"
+    android:background="#BA1A1A" android:padding="10dp">
+    <ImageView android:id="@+id/w_cover" android:layout_width="48dp" android:layout_height="48dp"
+        android:background="#FFFFFF" android:scaleType="centerCrop"/>
+    <TextView android:id="@+id/w_title" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="1" android:layout_marginStart="10dp" android:textColor="#FFFFFF"
+        android:maxLines="2" android:ellipsize="end" android:text="JD Audiobook Reader"/>
+    <ImageButton android:id="@+id/w_prev" android:layout_width="36dp" android:layout_height="36dp"
+        android:src="@drawable/ic_prev" android:background="@android:color/transparent"/>
+    <ImageButton android:id="@+id/w_play" android:layout_width="40dp" android:layout_height="40dp"
+        android:src="@drawable/ic_play" android:background="@android:color/transparent"/>
+    <ImageButton android:id="@+id/w_next" android:layout_width="36dp" android:layout_height="36dp"
+        android:src="@drawable/ic_next" android:background="@android:color/transparent"/>
+</LinearLayout>

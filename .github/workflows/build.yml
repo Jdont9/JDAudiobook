@@ -1,0 +1,61 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Le dépôt ne contient pas encore gradlew (son .jar est un binaire téléchargé,
+      # impossible à committer à l'aveugle) : on le génère ici avec le Gradle système
+      # du runner, une fois, pinné sur une version fixe. Les builds suivants utilisent
+      # ensuite ./gradlew, indépendamment de la version de Gradle installée sur la machine.
+      - name: Generate Gradle wrapper
+        run: |
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper --gradle-version 8.9 --distribution-type bin
+          fi
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobooks-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      # Le wrapper généré (gradlew, gradlew.bat, gradle-wrapper.jar/.properties) est publié
+      # ici pour que tu puisses le récupérer une fois et le committer dans le dépôt : les
+      # prochains runs le trouveront déjà présent et sauteront l'étape de génération.
+      - name: Upload generated wrapper (à committer une fois)
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-wrapper
+          path: |
+            gradlew
+            gradlew.bat
+            gradle/wrapper/gradle-wrapper.jar
+            gradle/wrapper/gradle-wrapper.properties
+          retention-days: 30
