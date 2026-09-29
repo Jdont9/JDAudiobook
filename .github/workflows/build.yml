@@ -17,6 +17,11 @@ jobs:
 
       - name: Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Par défaut cette action installe aussi le paquet "tools" (l'ancien Android SDK
+          # Tools), retiré depuis longtemps des dépôts Google, ce qui fait échouer l'étape.
+          # Gradle/AGP installe de toute façon platform/build-tools tout seul au premier build.
+          packages: platform-tools
 
       # Le dépôt ne contient pas encore gradlew (son .jar est un binaire téléchargé,
       # impossible à committer à l'aveugle) : on le génère ici avec le Gradle système
