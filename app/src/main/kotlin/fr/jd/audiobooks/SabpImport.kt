@@ -12,7 +12,7 @@ object SabpImport {
     data class SabpPos(val queueIndex: Int, val fileMs: Long, val speed: Float, val finished: Boolean)
 
     /**
-     * position_sabp.dat : un objet Java sérialisé (classe BookDataBackup), un fichier par dossier de livre.
+     * position.sabp.dat : un objet Java sérialisé (classe BookDataBackup), un fichier par dossier de livre.
      * La disposition des 18 champs de cette classe n'a pas changé depuis des années ; on repère la fin de
      * l'en-tête de sérialisation (juste après le nom du dernier champ, "mSkipStartEndSettings") puis on lit
      * les champs primitifs à des offsets fixes plutôt que de réimplémenter un désérialiseur Java complet.

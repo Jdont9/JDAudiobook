@@ -144,7 +144,7 @@ class Store(private val ctx: Context) {
             appendLine("Dossier (id) : $dirId")
             appendLine("Fichiers vus par le scan (${kids.size}) :")
             kids.forEach { appendLine("  • ${it.name}${if (it.isDir) " [dossier]" else ""}") }
-            appendLine("position_sabp.dat dans la liste ? ${if (listed != null) "oui" else "non"}")
+            appendLine("position.sabp.dat dans la liste ? ${if (listed != null) "oui" else "non"}")
             appendLine("URI devinée : $guessedId")
             appendLine("Ouverture via liste : ${if (listed == null) "n/a" else if (errListed == null && bytes != null) "OK" else errListed ?: "échec sans exception"}")
             appendLine("Ouverture via URI devinée : ${if (errGuessed == null && bytes != null && listed == null) "OK" else errGuessed ?: (if (listed != null) "non tentée (déjà trouvé via liste)" else "échec sans exception")}")
@@ -164,8 +164,8 @@ class Store(private val ctx: Context) {
                 // Le drapeau "Finished" est toujours relu (idempotent, il ne fait qu'ajouter l'état "lu").
                 // Pour la position : on compare à ce que JD a déjà, et on n'importe que si Smart Player est
                 // plus avancé (jamais de recul).
-                val listed = files.firstOrNull { it.name == "position_sabp.dat" }?.let { uriFor(it.id) }
-                val guessedId = "$dirId/position_sabp.dat"
+                val listed = files.firstOrNull { it.name == "position.sabp.dat" }?.let { uriFor(it.id) }
+                val guessedId = "$dirId/position.sabp.dat"
                 val guessed = try { DocumentsContract.buildDocumentUriUsingTree(treeUri, guessedId).toString() } catch (e: Exception) { null }
                 var bytes: ByteArray? = null
                 var errListed: String? = null
@@ -204,7 +204,7 @@ class Store(private val ctx: Context) {
         visit(rootId, "", rootName)
         onProgress?.invoke(ScanProgress(folders, out.size))
         cacheBooks(out)
-        lastSabpDiag = "Smart Player : $sabpFound fichier(s) position_sabp.dat trouvé(s), " +
+        lastSabpDiag = "Smart Player : $sabpFound fichier(s) position.sabp.dat trouvé(s), " +
             "$sabpParsed décodé(s), $sabpImported position(s) importée(s), $sabpFinished marqué(s) lu(s)\n\n" +
             (foundDump ?: milleniumDump ?: firstDump ?: "(aucun livre trouvé pour le vidage détaillé)")
         return out

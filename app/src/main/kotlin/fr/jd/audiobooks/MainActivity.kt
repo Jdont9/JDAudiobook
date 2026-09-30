@@ -80,7 +80,7 @@ fun App(store: Store) {
             scope.launch { rescan() }
         }
     }
-    // Import de statistics.xml depuis Smart AudioBook Player (les positions position_sabp.dat, elles,
+    // Import de statistics.xml depuis Smart AudioBook Player (les positions position.sabp.dat, elles,
     // sont reprises automatiquement au scan puisqu'elles vivent directement dans chaque dossier de livre).
     val statsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         if (u != null) scope.launch {
