@@ -109,7 +109,6 @@ class Store(private val ctx: Context) {
         var folders = 0
         var lastTick = 0L
         var sabpFound = 0
-        var sabpUnreadable = 0
         var sabpParsed = 0
         var sabpImported = 0
         var sabpFinished = 0
@@ -152,11 +151,23 @@ class Store(private val ctx: Context) {
                 // plus avancé (jamais de recul). Un simple hasSaved() était trop strict : ouvrir un livre une
                 // seule fois dans JD (même sans rien écouter) créait une position 0/0 qui bloquait l'import
                 // pour toujours.
-                files.firstOrNull { it.name == "position_sabp.dat" }?.let { f ->
+                // Le fichier n'apparaît pas toujours dans la liste renvoyée par certains fournisseurs SAF
+                // (certains gestionnaires de stockage filtrent les fichiers non reconnus comme média lors
+                // de l'énumération d'un dossier), alors qu'il existe bel et bien sur le disque. On tente
+                // d'abord de le trouver dans la liste ; s'il n'y est pas, on essaie quand même de l'ouvrir
+                // directement en devinant son URI à partir de celui du dossier parent (fonctionne sur la
+                // plupart des fournisseurs de stockage standards, où l'identifiant d'un fichier est juste
+                // "identifiant_du_dossier/nom_du_fichier").
+                val listed = files.firstOrNull { it.name == "position_sabp.dat" }?.let { uriFor(it.id) }
+                val guessed = try { DocumentsContract.buildDocumentUriUsingTree(treeUri, "$dirId/position_sabp.dat").toString() } catch (e: Exception) { null }
+                var bytes: ByteArray? = null
+                for (candidate in listOfNotNull(listed, guessed)) {
+                    bytes = try { resolver.openInputStream(Uri.parse(candidate))?.use { it.readBytes() } } catch (e: Exception) { null }
+                    if (bytes != null) break
+                }
+                if (bytes != null) {
                     sabpFound++
-                    val bytes = try { resolver.openInputStream(Uri.parse(uriFor(f.id)))?.use { it.readBytes() } } catch (e: Exception) { null }
-                    if (bytes == null) sabpUnreadable++
-                    bytes?.let { SabpImport.parsePosition(it) }?.let { sp ->
+                    SabpImport.parsePosition(bytes)?.let { sp ->
                         sabpParsed++
                         val cur = load(path)
                         val more = cur == null || sp.queueIndex > cur.index || (sp.queueIndex == cur.index && sp.fileMs > cur.pos)
@@ -175,9 +186,8 @@ class Store(private val ctx: Context) {
         visit(rootId, "", rootName)
         onProgress?.invoke(ScanProgress(folders, out.size))
         cacheBooks(out)
-        lastSabpDiag = "Smart Player : $sabpFound fichier(s) position_sabp.dat trouvé(s)" +
-            (if (sabpUnreadable > 0) ", $sabpUnreadable illisible(s)" else "") +
-            ", $sabpParsed décodé(s), $sabpImported position(s) importée(s), $sabpFinished marqué(s) lu(s)"
+        lastSabpDiag = "Smart Player : $sabpFound fichier(s) position_sabp.dat trouvé(s), " +
+            "$sabpParsed décodé(s), $sabpImported position(s) importée(s), $sabpFinished marqué(s) lu(s)"
         return out
     }
 }
