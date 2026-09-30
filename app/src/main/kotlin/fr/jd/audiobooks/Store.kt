@@ -135,6 +135,8 @@ class Store(private val ctx: Context) {
         fun ext(name: String) = name.substringAfterLast('.', "").lowercase()
         fun uriFor(id: String) = DocumentsContract.buildDocumentUriUsingTree(treeUri, id).toString()
 
+        var debugDump: String? = null
+
         fun visit(dirId: String, path: String, label: String) {
             folders++
             val kids = children(dirId)
@@ -148,22 +150,33 @@ class Store(private val ctx: Context) {
                 out += bk
                 // Le drapeau "Finished" est toujours relu (idempotent, il ne fait qu'ajouter l'état "lu").
                 // Pour la position : on compare à ce que JD a déjà, et on n'importe que si Smart Player est
-                // plus avancé (jamais de recul). Un simple hasSaved() était trop strict : ouvrir un livre une
-                // seule fois dans JD (même sans rien écouter) créait une position 0/0 qui bloquait l'import
-                // pour toujours.
-                // Le fichier n'apparaît pas toujours dans la liste renvoyée par certains fournisseurs SAF
-                // (certains gestionnaires de stockage filtrent les fichiers non reconnus comme média lors
-                // de l'énumération d'un dossier), alors qu'il existe bel et bien sur le disque. On tente
-                // d'abord de le trouver dans la liste ; s'il n'y est pas, on essaie quand même de l'ouvrir
-                // directement en devinant son URI à partir de celui du dossier parent (fonctionne sur la
-                // plupart des fournisseurs de stockage standards, où l'identifiant d'un fichier est juste
-                // "identifiant_du_dossier/nom_du_fichier").
+                // plus avancé (jamais de recul).
                 val listed = files.firstOrNull { it.name == "position_sabp.dat" }?.let { uriFor(it.id) }
-                val guessed = try { DocumentsContract.buildDocumentUriUsingTree(treeUri, "$dirId/position_sabp.dat").toString() } catch (e: Exception) { null }
+                val guessedId = "$dirId/position_sabp.dat"
+                val guessed = try { DocumentsContract.buildDocumentUriUsingTree(treeUri, guessedId).toString() } catch (e: Exception) { null }
                 var bytes: ByteArray? = null
-                for (candidate in listOfNotNull(listed, guessed)) {
-                    bytes = try { resolver.openInputStream(Uri.parse(candidate))?.use { it.readBytes() } } catch (e: Exception) { null }
-                    if (bytes != null) break
+                var errListed: String? = null
+                var errGuessed: String? = null
+                if (listed != null) {
+                    try { bytes = resolver.openInputStream(Uri.parse(listed))?.use { it.readBytes() } } catch (e: Exception) { errListed = e.toString() }
+                }
+                if (bytes == null && guessed != null) {
+                    try { bytes = resolver.openInputStream(Uri.parse(guessed))?.use { it.readBytes() } } catch (e: Exception) { errGuessed = e.toString() }
+                }
+                // Vidage détaillé pour le tout premier livre trouvé : de quoi voir précisément ce que
+                // l'appli reçoit du fournisseur de stockage, à comparer avec ce qu'un gestionnaire de
+                // fichiers montre sur le même dossier.
+                if (debugDump == null) {
+                    debugDump = buildString {
+                        appendLine("Livre : $label")
+                        appendLine("Dossier (id) : $dirId")
+                        appendLine("Fichiers vus par le scan (${kids.size}) :")
+                        kids.forEach { appendLine("  • ${it.name}${if (it.isDir) " [dossier]" else ""}") }
+                        appendLine("position_sabp.dat dans la liste ? ${if (listed != null) "oui" else "non"}")
+                        appendLine("URI devinée : $guessedId")
+                        appendLine("Ouverture via liste : ${if (listed == null) "n/a" else if (errListed == null && bytes != null) "OK" else errListed ?: "échec sans exception"}")
+                        appendLine("Ouverture via URI devinée : ${if (errGuessed == null && bytes != null && listed == null) "OK" else errGuessed ?: (if (listed != null) "non tentée (déjà trouvé via liste)" else "échec sans exception")}")
+                    }
                 }
                 if (bytes != null) {
                     sabpFound++
@@ -187,7 +200,8 @@ class Store(private val ctx: Context) {
         onProgress?.invoke(ScanProgress(folders, out.size))
         cacheBooks(out)
         lastSabpDiag = "Smart Player : $sabpFound fichier(s) position_sabp.dat trouvé(s), " +
-            "$sabpParsed décodé(s), $sabpImported position(s) importée(s), $sabpFinished marqué(s) lu(s)"
+            "$sabpParsed décodé(s), $sabpImported position(s) importée(s), $sabpFinished marqué(s) lu(s)\n\n" +
+            (debugDump ?: "(aucun livre trouvé pour le vidage détaillé)")
         return out
     }
 }
