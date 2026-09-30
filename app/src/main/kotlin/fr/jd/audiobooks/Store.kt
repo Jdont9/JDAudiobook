@@ -89,6 +89,11 @@ class Store(private val ctx: Context) {
         p.edit().putString(cacheKey(), a.toString()).apply()
     }
 
+    // ---- Diagnostic Smart Player : rempli à chaque scan(), lu par l'UI juste après pour savoir
+    // précisément où ça coince (fichier introuvable / illisible / déjà à jour) plutôt que de deviner.
+    var lastSabpDiag: String? = null
+        private set
+
     // ---- Scan de l'arborescence : profondeur illimitée, tout dossier qui contient directement des
     // fichiers audio est un livre (même logique que Smart AudioBook Player). Utilise directement
     // DocumentsContract (une seule requête par dossier) plutôt que DocumentFile, qui fait un appel
@@ -103,6 +108,11 @@ class Store(private val ctx: Context) {
         val out = mutableListOf<Book>()
         var folders = 0
         var lastTick = 0L
+        var sabpFound = 0
+        var sabpUnreadable = 0
+        var sabpParsed = 0
+        var sabpImported = 0
+        var sabpFinished = 0
 
         data class Kid(val id: String, val name: String, val isDir: Boolean)
 
@@ -143,12 +153,15 @@ class Store(private val ctx: Context) {
                 // seule fois dans JD (même sans rien écouter) créait une position 0/0 qui bloquait l'import
                 // pour toujours.
                 files.firstOrNull { it.name == "position_sabp.dat" }?.let { f ->
+                    sabpFound++
                     val bytes = try { resolver.openInputStream(Uri.parse(uriFor(f.id)))?.use { it.readBytes() } } catch (e: Exception) { null }
+                    if (bytes == null) sabpUnreadable++
                     bytes?.let { SabpImport.parsePosition(it) }?.let { sp ->
+                        sabpParsed++
                         val cur = load(path)
                         val more = cur == null || sp.queueIndex > cur.index || (sp.queueIndex == cur.index && sp.fileMs > cur.pos)
-                        if (more) save(path, sp.queueIndex.coerceIn(0, audio.lastIndex), sp.fileMs, sp.speed)
-                        if (sp.finished) setFinished(path, true)
+                        if (more) { save(path, sp.queueIndex.coerceIn(0, audio.lastIndex), sp.fileMs, sp.speed); sabpImported++ }
+                        if (sp.finished) { setFinished(path, true); sabpFinished++ }
                     }
                 }
             }
@@ -162,6 +175,9 @@ class Store(private val ctx: Context) {
         visit(rootId, "", rootName)
         onProgress?.invoke(ScanProgress(folders, out.size))
         cacheBooks(out)
+        lastSabpDiag = "Smart Player : $sabpFound fichier(s) position_sabp.dat trouvé(s)" +
+            (if (sabpUnreadable > 0) ", $sabpUnreadable illisible(s)" else "") +
+            ", $sabpParsed décodé(s), $sabpImported position(s) importée(s), $sabpFinished marqué(s) lu(s)"
         return out
     }
 }

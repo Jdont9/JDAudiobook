@@ -67,6 +67,7 @@ fun App(store: Store) {
         val result = withContext(Dispatchers.IO) { store.scan { sp -> scanProgress = sp } }
         books = result
         scanProgress = null
+        importMsg = store.lastSabpDiag
     }
     // Pas de scan automatique à l'ouverture : la liste vient uniquement du cache. Un scan ne se
     // déclenche que sur une action explicite (bouton "Dossier" la première fois, ou "Rescan").
