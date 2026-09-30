@@ -24,6 +24,8 @@ class Store(private val ctx: Context) {
         p.edit().putString("s_$path", "$i|$pos|$speed").apply()
     fun load(path: String): Saved? = p.getString("s_$path", null)?.split("|")?.let { Saved(it[0].toInt(), it[1].toLong(), it[2].toFloat()) }
     fun hasSaved(path: String): Boolean = p.contains("s_$path")
+    fun finished(path: String): Boolean = p.getBoolean("fin_$path", false)
+    fun setFinished(path: String, v: Boolean) = p.edit().putBoolean("fin_$path", v).apply()
 
     fun marks(path: String): List<Mark> {
         val a = JSONArray(p.getString("b_$path", "[]"))
@@ -140,6 +142,7 @@ class Store(private val ctx: Context) {
                         val bytes = try { resolver.openInputStream(Uri.parse(uriFor(f.id)))?.use { it.readBytes() } } catch (e: Exception) { null }
                         bytes?.let { SabpImport.parsePosition(it) }?.let { sp ->
                             save(path, sp.queueIndex.coerceIn(0, audio.lastIndex), sp.fileMs, sp.speed)
+                            if (sp.finished) setFinished(path, true)
                         }
                     }
                 }

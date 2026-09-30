@@ -139,19 +139,59 @@ fun App(store: Store) {
             if (store.root == null) {
                 Text("Choisis un dossier pour commencer.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
             }
-            LazyColumn(Modifier.padding(horizontal = 16.dp)) {
-                items(books) { bk ->
+
+            val tabs = listOf("TOUS", "NOUVEAUX", "EN COURS", "LUS")
+            var tab by remember { mutableStateOf(0) }
+            val shown = when (tab) {
+                1 -> books.filter { !store.hasSaved(it.path) && !store.finished(it.path) }
+                2 -> books.filter { store.hasSaved(it.path) && !store.finished(it.path) }
+                3 -> books.filter { store.finished(it.path) }
+                else -> books
+            }
+            if (books.isNotEmpty()) {
+                TabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.surface) {
+                    tabs.forEachIndexed { i, t ->
+                        Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, style = MaterialTheme.typography.labelLarge) })
+                    }
+                }
+            }
+            LazyColumn {
+                items(shown, key = { it.path }) { bk ->
                     val s = store.load(bk.path)
-                    ListItem(
-                        leadingContent = { Cover(bk, 56.dp) },
-                        headlineContent = { Text(bk.name) },
-                        supportingContent = {
-                            Text(
-                                (bk.path.substringBeforeLast('/', "").takeIf { it.isNotEmpty() }?.let { "$it · " } ?: "") +
-                                "${bk.uris.size} fichiers" + (s?.let { " · reprise ${it.index + 1}/${bk.uris.size} à ${fmt(it.pos)}" } ?: "")
+                    val finished = store.finished(bk.path)
+                    Row(
+                        Modifier.fillMaxWidth().clickable { open(bk) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(Modifier.width(84.dp)) {
+                            Cover(bk, 84.dp)
+                            if (finished) Box(
+                                Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp)
+                                    .clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
+                            ) { Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall) }
+                        }
+                        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                            Text(bk.name, style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                            val series = bk.path.substringBeforeLast('/', "")
+                            if (series.isNotEmpty()) Text(
+                                series.substringAfterLast('/'), style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        },
-                        modifier = Modifier.clickable { open(bk) })
+                            Spacer(Modifier.height(28.dp))
+                            Text(
+                                when {
+                                    finished -> "Terminé"
+                                    s != null -> "Reprise ${s.index + 1}/${bk.uris.size} à ${fmt(s.pos)}"
+                                    else -> "${bk.uris.size} fichier(s)"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.align(Alignment.End)
+                            )
+                        }
+                    }
+                    HorizontalDivider()
                 }
             }
         }
@@ -167,6 +207,7 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     var speedMenu by remember { mutableStateOf(false) }
     var sleepMenu by remember { mutableStateOf(false) }
     var skipSilence by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf(store.finished(bk.path)) }
     val idx = PlaybackService.player?.currentMediaItemIndex ?: 0
     LaunchedEffect(idx) { chaps = withContext(Dispatchers.IO) { Chapters.read(ctx, bk.uris[idx]) } }
     LaunchedEffect(Unit) {
@@ -183,7 +224,12 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     Column(Modifier.padding(16.dp).statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TextButton(back) { Text("← Bibliothèque") }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Cover(bk, 160.dp) }
-        Text(bk.name, style = MaterialTheme.typography.titleLarge)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(bk.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            TextButton({ finished = !finished; store.setFinished(bk.path, finished) }) {
+                Text(if (finished) "✓ Lu" else "Marquer comme lu")
+            }
+        }
         Text(bk.names.getOrElse(p.currentMediaItemIndex) { "" } + "  (${p.currentMediaItemIndex + 1}/${bk.uris.size})")
         if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}")
         val dur = p.duration.coerceAtLeast(1)

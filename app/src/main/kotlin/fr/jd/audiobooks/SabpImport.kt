@@ -9,7 +9,7 @@ import java.io.InputStream
 /** Lit les fichiers laissés par Smart AudioBook Player pour reprendre l'historique. */
 object SabpImport {
 
-    data class SabpPos(val queueIndex: Int, val fileMs: Long, val speed: Float)
+    data class SabpPos(val queueIndex: Int, val fileMs: Long, val speed: Float, val finished: Boolean)
 
     /**
      * position_sabp.dat : un objet Java sérialisé (classe BookDataBackup), un fichier par dossier de livre.
@@ -30,7 +30,10 @@ object SabpImport {
             val filePos = i32(off + 12)              // mFilePosition : position en ms dans ce fichier
             val speedBits = i32(off + 24)            // mPlaybackSpeed : float
             val speed = Float.fromBits(speedBits)
-            return SabpPos(queuePos, filePos.toLong().coerceAtLeast(0), if (speed in 0.1f..5f) speed else 1f)
+            // mBookState (enum) est sérialisé juste après, comme une chaîne UTF précédée de sa longueur
+            // sur 2 octets : on cherche directement ce motif plutôt que de désérialiser l'enum en entier.
+            val finished = indexOf(bytes, byteArrayOf(0x00, 0x08) + "Finished".toByteArray(), off) >= 0
+            return SabpPos(queuePos, filePos.toLong().coerceAtLeast(0), if (speed in 0.1f..5f) speed else 1f, finished)
         } catch (e: Exception) { return null }
     }
 
