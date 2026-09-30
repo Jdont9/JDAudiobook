@@ -112,14 +112,15 @@ fun App(store: Store) {
         showStats -> StatsScreen(store) { showStats = false }
         else -> Column {
             Surface(color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
-                Text("JD Audiobook Reader", Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp), style = MaterialTheme.typography.titleLarge)
+                Text("JD Audiobook Reader", Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.titleMedium)
             }
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
-                TextButton({ showStats = true }) { Text("Stats") }
-                TextButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }) { Text("Importer") }
-                Button({ picker.launch(null) }) { Text("Dossier") }
-                TextButton({ scope.launch { rescan() } }, enabled = scanProgress == null) { Text("Rescan") }
+                val btnPad = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                TextButton({ showStats = true }, contentPadding = btnPad) { Text("Stats", style = MaterialTheme.typography.labelMedium) }
+                TextButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }, contentPadding = btnPad) { Text("Importer", style = MaterialTheme.typography.labelMedium) }
+                OutlinedButton({ picker.launch(null) }, contentPadding = btnPad) { Text("Dossier", style = MaterialTheme.typography.labelMedium) }
+                TextButton({ scope.launch { rescan() } }, enabled = scanProgress == null, contentPadding = btnPad) { Text("Rescan", style = MaterialTheme.typography.labelMedium) }
             }
             scanProgress?.let { sp ->
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -151,7 +152,7 @@ fun App(store: Store) {
             if (books.isNotEmpty()) {
                 TabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.surface) {
                     tabs.forEachIndexed { i, t ->
-                        Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, style = MaterialTheme.typography.labelLarge) })
+                        Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, style = MaterialTheme.typography.labelSmall, maxLines = 1) })
                     }
                 }
             }

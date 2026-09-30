@@ -137,13 +137,18 @@ class Store(private val ctx: Context) {
                     ?.let { uriFor(it.id) }
                 val bk = Book(path, label, audio.map { uriFor(it.id) }, audio.map { it.name }, cv)
                 out += bk
-                if (!hasSaved(path)) {
-                    files.firstOrNull { it.name == "position_sabp.dat" }?.let { f ->
-                        val bytes = try { resolver.openInputStream(Uri.parse(uriFor(f.id)))?.use { it.readBytes() } } catch (e: Exception) { null }
-                        bytes?.let { SabpImport.parsePosition(it) }?.let { sp ->
-                            save(path, sp.queueIndex.coerceIn(0, audio.lastIndex), sp.fileMs, sp.speed)
-                            if (sp.finished) setFinished(path, true)
-                        }
+                // Le drapeau "Finished" est toujours relu (idempotent, il ne fait qu'ajouter l'état "lu").
+                // Pour la position : on compare à ce que JD a déjà, et on n'importe que si Smart Player est
+                // plus avancé (jamais de recul). Un simple hasSaved() était trop strict : ouvrir un livre une
+                // seule fois dans JD (même sans rien écouter) créait une position 0/0 qui bloquait l'import
+                // pour toujours.
+                files.firstOrNull { it.name == "position_sabp.dat" }?.let { f ->
+                    val bytes = try { resolver.openInputStream(Uri.parse(uriFor(f.id)))?.use { it.readBytes() } } catch (e: Exception) { null }
+                    bytes?.let { SabpImport.parsePosition(it) }?.let { sp ->
+                        val cur = load(path)
+                        val more = cur == null || sp.queueIndex > cur.index || (sp.queueIndex == cur.index && sp.fileMs > cur.pos)
+                        if (more) save(path, sp.queueIndex.coerceIn(0, audio.lastIndex), sp.fileMs, sp.speed)
+                        if (sp.finished) setFinished(path, true)
                     }
                 }
             }
