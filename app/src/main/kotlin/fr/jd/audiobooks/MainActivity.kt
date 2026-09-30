@@ -85,13 +85,12 @@ fun App(store: Store) {
     val statsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         if (u != null) scope.launch {
             val (matched, total) = withContext(Dispatchers.IO) { SabpImport.importStatistics(ctx, store, u, books) }
-            importMsg = "${matched livre(s) sur ${total importé(s) depuis statistics.xml"
+            importMsg = "$matched livre(s) sur $total importé(s) depuis statistics.xml"
         }
     }
     fun open(bk: Book) {
-        // Position lue AVANT d'afficher l'écran lecteur : la boucle de sauvegarde de PlayerScreen
-        // démarre dès que cur est posé, et elle ne doit jamais écraser la position importée avant
-        // que le player ait reçu les media items (sinon la lecture repart du début du livre).
+        // Charge la position AVANT d'afficher l'écran du player : sinon la boucle de sauvegarde
+        // (toutes les 500 ms) écrase la position importée avec index 0 / pos 0 pendant le chargement.
         val s = store.load(bk.path)
         cur = bk
         scope.launch {
@@ -130,7 +129,7 @@ fun App(store: Store) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(
-                        "Scan en cours… ${sp.folders dossier(s) explorés · ${sp.books livre(s) trouvés",
+                        "Scan en cours… ${sp.folders} dossier(s) explorés · ${sp.books} livre(s) trouvés",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -187,8 +186,8 @@ fun App(store: Store) {
                             Text(
                                 when {
                                     finished -> "Terminé"
-                                    s != null -> "Reprise ${s.index + 1/${bk.uris.size à ${fmt(s.pos)"
-                                    else -> "${bk.uris.size fichier(s)"
+                                    s != null -> "Reprise ${s.index + 1}/${bk.uris.size} à ${fmt(s.pos)}"
+                                    else -> "${bk.uris.size} fichier(s)"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -218,13 +217,13 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     LaunchedEffect(Unit) {
         while (true) {
             delay(500); tick++
-            // Ne sauvegarder que si le player joue réellement CE livre et est prêt : sinon, pendant
-            // l'ouverture (couverture en cours de décodage, media items pas encore posés), on écraserait
-            // la position sauvegardée/importée avec index 0 / position 0 — d'où la reprise au début.
-            val pl = PlaybackService.player
-            val item = pl?.currentMediaItem
-            if (item?.mediaMetadata?.extras?.getString("path") == bk.path && pl.playbackState == Player.STATE_READY) {
-                store.save(bk.path, pl.currentMediaItemIndex, pl.currentPosition, pl.playbackParameters.speed)
+            PlaybackService.player?.let { pl ->
+                // Ne sauvegarde que si le player a réellement chargé ce livre et est prêt :
+                // évite d'écraser la position avec index 0 / pos 0 pendant le chargement des media items.
+                if (pl.currentMediaItem?.mediaMetadata?.extras?.getString("path") == bk.path &&
+                    pl.playbackState == Player.STATE_READY) {
+                    store.save(bk.path, pl.currentMediaItemIndex, pl.currentPosition, pl.playbackParameters.speed)
+                }
             }
         }
     }
@@ -242,8 +241,8 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                 Text(if (finished) "✓ Lu" else "Marquer comme lu")
             }
         }
-        Text(bk.names.getOrElse(p.currentMediaItemIndex) { "" } + "  (${p.currentMediaItemIndex + 1/${bk.uris.size)")
-        if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1/${chaps.size · ${chaps[ci].title")
+        Text(bk.names.getOrElse(p.currentMediaItemIndex) { "" } + "  (${p.currentMediaItemIndex + 1}/${bk.uris.size})")
+        if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}")
         val dur = p.duration.coerceAtLeast(1)
         Slider(p.currentPosition.toFloat() / dur, { p.seekTo((it * dur).toLong()) })
         Row { Text(fmt(p.currentPosition), Modifier.weight(1f)); Text(fmt(dur)) }
@@ -262,18 +261,18 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box {
-                OutlinedButton({ speedMenu = true }) { Text("×${p.playbackParameters.speed") }
+                OutlinedButton({ speedMenu = true }) { Text("×${p.playbackParameters.speed}") }
                 DropdownMenu(speedMenu, { speedMenu = false }) {
                     listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f).forEach { s ->
-                        DropdownMenuItem({ Text("×${s") }, { p.setPlaybackSpeed(s); speedMenu = false })
+                        DropdownMenuItem({ Text("×$s") }, { p.setPlaybackSpeed(s); speedMenu = false })
                     }
                 }
             }
             Box {
-                OutlinedButton({ sleepMenu = true }) { Text(if (left > 0) "Sommeil ${fmt(left)" else "Sommeil") }
+                OutlinedButton({ sleepMenu = true }) { Text(if (left > 0) "Sommeil ${fmt(left)}" else "Sommeil") }
                 DropdownMenu(sleepMenu, { sleepMenu = false }) {
                     listOf(0, 10, 15, 30, 45, 60, 90).forEach { m ->
-                        DropdownMenuItem({ Text(if (m == 0) "Désactivé" else "${m min") }, { Sleep.set(m); sleepMenu = false })
+                        DropdownMenuItem({ Text(if (m == 0) "Désactivé" else "$m min") }, { Sleep.set(m); sleepMenu = false })
                     }
                 }
             }
@@ -281,7 +280,7 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
             TextButton(openEq) { Text("Égaliseur") }
         }
         Button({
-            marks = marks + Mark(p.currentMediaItemIndex, p.currentPosition, "${bk.names[p.currentMediaItemIndex] ${fmt(p.currentPosition)")
+            marks = marks + Mark(p.currentMediaItemIndex, p.currentPosition, "${bk.names[p.currentMediaItemIndex]} ${fmt(p.currentPosition)}")
             store.putMarks(bk.path, marks)
         }) { Text("+ Signet") }
         LazyColumn(Modifier.weight(1f)) {
@@ -289,7 +288,7 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                 item { Text("Chapitres", style = MaterialTheme.typography.titleMedium) }
                 itemsIndexed(chaps) { i, c ->
                     Text(
-                        "${fmt(c.startMs)  ${c.title",
+                        "${fmt(c.startMs)}  ${c.title}",
                         Modifier.fillMaxWidth().clickable { p.seekTo(c.startMs) }.padding(vertical = 6.dp),
                         color = if (i == ci) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                 }
@@ -318,10 +317,10 @@ fun StatsScreen(store: Store, back: () -> Unit) {
     Column(Modifier.padding(16.dp).statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TextButton(back) { Text("← Bibliothèque") }
         Text("Statistiques", style = MaterialTheme.typography.headlineSmall)
-        Text("Aujourd'hui : ${fmt(st.filter { it.day == today }.sumOf { it.wall })")
-        Text("Total écouté : ${fmt(wall)")
-        Text("Contenu écouté : ${fmt(content)")
-        Text("Gagné grâce à la vitesse : ${fmt((content - wall).coerceAtLeast(0))")
+        Text("Aujourd'hui : ${fmt(st.filter { it.day == today }.sumOf { it.wall })}")
+        Text("Total écouté : ${fmt(wall)}")
+        Text("Contenu écouté : ${fmt(content)}")
+        Text("Gagné grâce à la vitesse : ${fmt((content - wall).coerceAtLeast(0))}")
         Text("7 derniers jours", style = MaterialTheme.typography.titleMedium)
         Row(Modifier.fillMaxWidth().height(120.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             perDay.forEachIndexed { i, v ->
@@ -367,13 +366,13 @@ fun EqScreen(store: Store, back: () -> Unit) {
         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             bands.forEach { (b, lo, hi) ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxHeight()) {
-                    Text("${Eq.level(b) / 100dB", style = MaterialTheme.typography.labelSmall)
+                    Text("${Eq.level(b) / 100}dB", style = MaterialTheme.typography.labelSmall)
                     Slider(
                         value = Eq.level(b).toFloat(),
                         onValueChange = { v -> Eq.setLevel(b, v.toInt().toShort()); store.setEqLevels(Eq.snapshot()); tick++ },
                         valueRange = lo.toFloat()..hi.toFloat(),
                         modifier = Modifier.graphicsLayer { rotationZ = 270f }.width(140.dp))
-                    Text("${Eq.freq(b)Hz", style = MaterialTheme.typography.labelSmall)
+                    Text("${Eq.freq(b)}Hz", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
