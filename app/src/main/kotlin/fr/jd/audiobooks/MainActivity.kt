@@ -53,15 +53,30 @@ fun Cover(bk: Book, size: Dp) {
 fun App(store: Store) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var books by remember { mutableStateOf(store.scan()) }
+    // Affichage instantané depuis le cache (s'il existe) pendant qu'un scan frais tourne en arrière-plan ;
+    // la liste affichée se met à jour dès que ce scan se termine, sans jamais bloquer l'écran.
+    var books by remember { mutableStateOf(store.cachedBooks() ?: emptyList()) }
+    var scanProgress by remember { mutableStateOf<ScanProgress?>(null) }
     var cur by remember { mutableStateOf<Book?>(null) }
     var showStats by remember { mutableStateOf(false) }
     var showEq by remember { mutableStateOf(false) }
     var importMsg by remember { mutableStateOf<String?>(null) }
+
+    suspend fun rescan() {
+        scanProgress = ScanProgress(0, 0)
+        val result = withContext(Dispatchers.IO) { store.scan { sp -> scanProgress = sp } }
+        books = result
+        scanProgress = null
+    }
+    // Pas de scan automatique à l'ouverture : la liste vient uniquement du cache. Un scan ne se
+    // déclenche que sur une action explicite (bouton "Dossier" la première fois, ou "Rescan").
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u ->
         if (u != null) {
             ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            store.root = u.toString(); books = store.scan()
+            store.root = u.toString()
+            books = emptyList()
+            scope.launch { rescan() }
         }
     }
     // Import de statistics.xml depuis Smart AudioBook Player (les positions position_sabp.dat, elles,
@@ -104,10 +119,25 @@ fun App(store: Store) {
                 TextButton({ showStats = true }) { Text("Stats") }
                 TextButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }) { Text("Importer") }
                 Button({ picker.launch(null) }) { Text("Dossier") }
-                TextButton({ books = store.scan() }) { Text("Rescan") }
+                TextButton({ scope.launch { rescan() } }, enabled = scanProgress == null) { Text("Rescan") }
+            }
+            scanProgress?.let { sp ->
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(
+                        "Scan en cours… ${sp.folders} dossier(s) explorés · ${sp.books} livre(s) trouvés",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             importMsg?.let {
                 Text(it, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            if (books.isEmpty() && scanProgress == null && store.root != null) {
+                Text("Aucun livre en cache — appuie sur « Rescan ».", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+            }
+            if (store.root == null) {
+                Text("Choisis un dossier pour commencer.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
             }
             LazyColumn(Modifier.padding(horizontal = 16.dp)) {
                 items(books) { bk ->
