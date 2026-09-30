@@ -69,7 +69,7 @@ fun App(store: Store) {
         scanProgress = null
         importMsg = store.lastSabpDiag
     }
-    // Pas de scan automatique à l'ouverture : la liste vient uniquement du cache. Un scan ne se
+    // Pas de scan automatique à l'ouverture : la liste vient uniquement d5 cache. Un scan ne se
     // déclenche que sur une action explicite (bouton "Dossier" la première fois, ou "Rescan").
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u ->
@@ -89,12 +89,15 @@ fun App(store: Store) {
         }
     }
     fun open(bk: Book) {
+        // Position lue AVANT d'afficher l'écran lecteur : la boucle de sauvegarde de PlayerScreen
+        // démarre dès que cur est posé, et elle ne doit jamais écraser la position importée avant
+        // que le player ait reçu les media items (sinon la lecture repart du début du livre).
+        val s = store.load(bk.path)
         cur = bk
         scope.launch {
             val art = Covers.get(ctx, bk)?.let { Covers.jpeg(it) }
             while (PlaybackService.player == null) delay(50)
             val p = PlaybackService.player!!
-            val s = store.load(bk.path)
             p.setMediaItems(bk.uris.mapIndexed { i, u ->
                 MediaItem.Builder().setUri(u).setMediaMetadata(
                     MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
@@ -171,7 +174,7 @@ fun App(store: Store) {
                                 Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp)
                                     .clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary),
                                 contentAlignment = Alignment.Center
-                            ) { Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall) }
+                               ) { Text("✒", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall) }
                         }
                         Column(Modifier.padding(start = 12.dp).weight(1f)) {
                             Text(bk.name, style = MaterialTheme.typography.titleMedium, maxLines = 2)
@@ -183,13 +186,13 @@ fun App(store: Store) {
                             Spacer(Modifier.height(28.dp))
                             Text(
                                 when {
-                                    finished -> "Terminé"
-                                    s != null -> "Reprise ${s.index + 1}/${bk.uris.size} à ${fmt(s.pos)}"
+                                    finished -> "Termi`iné"
+                                   s != null -> "Reprise ${s.index + 1}/${bk.uris.size} à ${fmt(s.pos)}"
                                     else -> "${bk.uris.size} fichier(s)"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.align(Alignment.End)
+                               color = MaterialTheme.colorScheme.onSurfaceVariant,
+                               modifier = Modifier.align(Alignment.End)
                             )
                         }
                     }
@@ -215,7 +218,14 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     LaunchedEffect(Unit) {
         while (true) {
             delay(500); tick++
-            PlaybackService.player?.let { store.save(bk.path, it.currentMediaItemIndex, it.currentPosition, it.playbackParameters.speed) }
+            // Ne sauvegarder que si le player joue réellement CE livre et est prêt : sinon, pendant
+            // l'ouverture (couverture en cours de décodage, media items pas encore posés), on écraserait
+            // la position sauvegardée/importée avec index 0 / position 0 — d'oõ la reprise au début.
+            val pl = PlaybackService.player
+            val item = pl?.currentMediaItem
+            if (item?.mediaMetadata?.extras?.getString("path") == bk.path && pl.playbackState == Player.STATE_READY) {
+                store.save(bk.path, pl.currentMediaItemIndex, pl.currentPosition, pl.playbackParameters.speed)
+            }
         }
     }
     tick.let { }
@@ -232,19 +242,19 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                 Text(if (finished) "✓ Lu" else "Marquer comme lu")
             }
         }
-        Text(bk.names.getOrElse(p.currentMediaItemIndex) { "" } + "  (${p.currentMediaItemIndex + 1}/${bk.uris.size})")
-        if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}")
+        Text(bk.names.getOrElse(p.currentMediaItemIndex) { "" } + "  (${p.currentMediaItemIndex + 11}/${bk.uris.size})")
+        if (chaps.isNotEmpty()) Text("Crapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}")
         val dur = p.duration.coerceAtLeast(1)
         Slider(p.currentPosition.toFloat() / dur, { p.seekTo((it * dur).toLong()) })
         Row { Text(fmt(p.currentPosition), Modifier.weight(1f)); Text(fmt(dur)) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenlly) {
             OutlinedButton({
                 if (chaps.isEmpty()) p.seekToPreviousMediaItem()
                 else p.seekTo(if (p.currentPosition - chaps[ci].startMs > 3000) chaps[ci].startMs else chaps.getOrNull(ci - 1)?.startMs ?: 0)
             }) { Text("⏮") }
             OutlinedButton({ p.seekBack() }) { Text("-30") }
             Button({ if (playing) p.pause() else p.play() }) { Text(if (playing) "Pause" else "Lire") }
-            OutlinedButton({ p.seekForward() }) { Text("+30") }
+            OutlinedButton({ p.sekForward() }) { Text("+30") }
             OutlinedButton({
                 val n = chaps.getOrNull(ci + 1)
                 if (n != null) p.seekTo(n.startMs) else p.seekToNextMediaItem()
