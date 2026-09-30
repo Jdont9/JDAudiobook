@@ -135,7 +135,20 @@ class Store(private val ctx: Context) {
         fun ext(name: String) = name.substringAfterLast('.', "").lowercase()
         fun uriFor(id: String) = DocumentsContract.buildDocumentUriUsingTree(treeUri, id).toString()
 
-        var debugDump: String? = null
+        var foundDump: String? = null
+        var milleniumDump: String? = null
+        var firstDump: String? = null
+
+        fun dumpFor(label: String, dirId: String, kids: List<Kid>, listed: String?, guessedId: String, errListed: String?, errGuessed: String?, bytes: ByteArray?) = buildString {
+            appendLine("Livre : $label")
+            appendLine("Dossier (id) : $dirId")
+            appendLine("Fichiers vus par le scan (${kids.size}) :")
+            kids.forEach { appendLine("  • ${it.name}${if (it.isDir) " [dossier]" else ""}") }
+            appendLine("position_sabp.dat dans la liste ? ${if (listed != null) "oui" else "non"}")
+            appendLine("URI devinée : $guessedId")
+            appendLine("Ouverture via liste : ${if (listed == null) "n/a" else if (errListed == null && bytes != null) "OK" else errListed ?: "échec sans exception"}")
+            appendLine("Ouverture via URI devinée : ${if (errGuessed == null && bytes != null && listed == null) "OK" else errGuessed ?: (if (listed != null) "non tentée (déjà trouvé via liste)" else "échec sans exception")}")
+        }
 
         fun visit(dirId: String, path: String, label: String) {
             folders++
@@ -163,21 +176,13 @@ class Store(private val ctx: Context) {
                 if (bytes == null && guessed != null) {
                     try { bytes = resolver.openInputStream(Uri.parse(guessed))?.use { it.readBytes() } } catch (e: Exception) { errGuessed = e.toString() }
                 }
-                // Vidage détaillé pour le tout premier livre trouvé : de quoi voir précisément ce que
-                // l'appli reçoit du fournisseur de stockage, à comparer avec ce qu'un gestionnaire de
-                // fichiers montre sur le même dossier.
-                if (debugDump == null) {
-                    debugDump = buildString {
-                        appendLine("Livre : $label")
-                        appendLine("Dossier (id) : $dirId")
-                        appendLine("Fichiers vus par le scan (${kids.size}) :")
-                        kids.forEach { appendLine("  • ${it.name}${if (it.isDir) " [dossier]" else ""}") }
-                        appendLine("position_sabp.dat dans la liste ? ${if (listed != null) "oui" else "non"}")
-                        appendLine("URI devinée : $guessedId")
-                        appendLine("Ouverture via liste : ${if (listed == null) "n/a" else if (errListed == null && bytes != null) "OK" else errListed ?: "échec sans exception"}")
-                        appendLine("Ouverture via URI devinée : ${if (errGuessed == null && bytes != null && listed == null) "OK" else errGuessed ?: (if (listed != null) "non tentée (déjà trouvé via liste)" else "échec sans exception")}")
-                    }
-                }
+                // Trois vidages ciblés plutôt qu'un seul pris au hasard : le premier dossier où le fichier
+                // est réellement présent dans la liste (pour voir un cas qui marche), le dossier "Millenium"
+                // s'il existe (celui dont on a de vrais exemples de .dat), et sinon le tout premier livre,
+                // en dernier recours.
+                if (foundDump == null && listed != null) foundDump = dumpFor(label, dirId, kids, listed, guessedId, errListed, errGuessed, bytes)
+                if (milleniumDump == null && path.contains("millenium", ignoreCase = true)) milleniumDump = dumpFor(label, dirId, kids, listed, guessedId, errListed, errGuessed, bytes)
+                if (firstDump == null) firstDump = dumpFor(label, dirId, kids, listed, guessedId, errListed, errGuessed, bytes)
                 if (bytes != null) {
                     sabpFound++
                     SabpImport.parsePosition(bytes)?.let { sp ->
@@ -201,7 +206,7 @@ class Store(private val ctx: Context) {
         cacheBooks(out)
         lastSabpDiag = "Smart Player : $sabpFound fichier(s) position_sabp.dat trouvé(s), " +
             "$sabpParsed décodé(s), $sabpImported position(s) importée(s), $sabpFinished marqué(s) lu(s)\n\n" +
-            (debugDump ?: "(aucun livre trouvé pour le vidage détaillé)")
+            (foundDump ?: milleniumDump ?: firstDump ?: "(aucun livre trouvé pour le vidage détaillé)")
         return out
     }
 }
