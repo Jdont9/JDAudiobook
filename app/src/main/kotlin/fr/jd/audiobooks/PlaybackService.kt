@@ -15,12 +15,17 @@ private const val ROOT_ID = "root"
 
 class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
-    private var pausedAt = 0L
     private val h = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     companion object {
         var player: ExoPlayer? = null
+        // Suivi de la pause pour le retour en arrière automatique. En compagnon (pas un champ d'instance)
+        // pour pouvoir être remis à zéro depuis l'extérieur (MainActivity.open()) : sans ça, ouvrir un tout
+        // nouveau livre juste après avoir mis un autre livre en pause déclenchait le recul sur la position
+        // qu'on vient d'importer/reprendre, l'écrasant par une position plus ancienne.
+        private var pausedAt = 0L
+        fun markFreshStart() { pausedAt = 0L }
         const val ACTION_PLAY_PAUSE = "fr.jd.audiobooks.PLAY_PAUSE"
         const val ACTION_NEXT = "fr.jd.audiobooks.NEXT"
         const val ACTION_PREV = "fr.jd.audiobooks.PREV"
@@ -130,8 +135,8 @@ class PlaybackService : MediaLibraryService() {
                 val saved = store.load(bk.path)
                 val startIdx = if (requested.startsWith("track:")) idx else saved?.index ?: 0
                 val startPos = if (requested.startsWith("track:") && idx != saved?.index) 0L else saved?.pos ?: 0L
-                future.set(MediaItemsWithStartPosition(ImmutableList.copyOf(items), startIdx, startPos))
-            }
+                markFreshStart() // nouveau livre choisi depuis Android Auto : pas de recul automatique
+                future.set(MediaItemsWithStartPosition(ImmutableList.copyOf(items), startIdx, startPos))            }
             return future
         }
     }

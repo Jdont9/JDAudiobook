@@ -67,7 +67,8 @@ fun App(store: Store) {
         val result = withContext(Dispatchers.IO) { store.scan { sp -> scanProgress = sp } }
         books = result
         scanProgress = null
-        importMsg = store.lastSabpDiag
+        // Diagnostic Smart Player retiré de l'UI maintenant que l'import est confirmé fonctionnel ;
+        // store.lastSabpDiag reste calculé si besoin de redéboguer un jour.
     }
     // Pas de scan automatique à l'ouverture : la liste vient uniquement du cache. Un scan ne se
     // déclenche que sur une action explicite (bouton "Dossier" la première fois, ou "Rescan").
@@ -94,6 +95,7 @@ fun App(store: Store) {
             val art = Covers.get(ctx, bk)?.let { Covers.jpeg(it) }
             while (PlaybackService.player == null) delay(50)
             val p = PlaybackService.player!!
+            PlaybackService.markFreshStart() // on ouvre un livre choisi explicitement : jamais de recul automatique ici
             val s = store.load(bk.path)
             p.setMediaItems(bk.uris.mapIndexed { i, u ->
                 MediaItem.Builder().setUri(u).setMediaMetadata(
