@@ -90,13 +90,19 @@ fun App(store: Store) {
         }
     }
     fun open(bk: Book) {
+        // Charge la position AVANT d'afficher l'écran du player : sinon la boucle de sauvegarde
+        // (toutes les 500 ms) écrase la position importée avec index 0 / pos 0 pendant le chargement.
+        val s = store.load(bk.path)
         cur = bk
         scope.launch {
             val art = Covers.get(ctx, bk)?.let { Covers.jpeg(it) }
             while (PlaybackService.player == null) delay(50)
             val p = PlaybackService.player!!
+<<<<<<< HEAD
             PlaybackService.markFreshStart() // on ouvre un livre choisi explicitement : jamais de recul automatique ici
             val s = store.load(bk.path)
+=======
+>>>>>>> 17275c701be73bb2a85c325e701a5b38abdee6ac
             p.setMediaItems(bk.uris.mapIndexed { i, u ->
                 MediaItem.Builder().setUri(u).setMediaMetadata(
                     MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
@@ -217,7 +223,14 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     LaunchedEffect(Unit) {
         while (true) {
             delay(500); tick++
-            PlaybackService.player?.let { store.save(bk.path, it.currentMediaItemIndex, it.currentPosition, it.playbackParameters.speed) }
+            PlaybackService.player?.let { pl ->
+                // Ne sauvegarde que si le player a réellement chargé ce livre et est prêt :
+                // évite d'écraser la position avec index 0 / pos 0 pendant le chargement des media items.
+                if (pl.currentMediaItem?.mediaMetadata?.extras?.getString("path") == bk.path &&
+                    pl.playbackState == Player.STATE_READY) {
+                    store.save(bk.path, pl.currentMediaItemIndex, pl.currentPosition, pl.playbackParameters.speed)
+                }
+            }
         }
     }
     tick.let { }
