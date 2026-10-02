@@ -366,7 +366,7 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 4.dp))
             }
-            items(marks.sortedWith(compareBy({ it.index }, { it.pos }))) { m ->
+            items(marks.sortedWith(compareBy<Mark>({ it.index }, { it.pos }))) { m ->
                 Row(Modifier.fillMaxWidth().clickable { p.seekTo(m.index.coerceIn(0, bk.uris.lastIndex), m.pos) }, verticalAlignment = Alignment.CenterVertically) {
                     Text(m.label, Modifier.weight(1f).padding(vertical = 8.dp))
                     TextButton({ marks = marks - m; store.putMarks(bk.path, marks) }) { Text("✕") }

@@ -38,9 +38,12 @@ object ProgressFile {
 
     /** Identifiant SAF du dossier du livre : mémorisé au scan, sinon déduit du premier fichier audio. */
     fun dirOf(bk: Book): String? = bk.dir ?: dirFromUri(bk.uris.firstOrNull())
-    private fun dirFromUri(uri: String?): String? = try {
-        DocumentsContract.getDocumentId(Uri.parse(uri ?: return null)).substringBeforeLast('/', "").ifEmpty { null }
-    } catch (e: Exception) { null }
+    private fun dirFromUri(uri: String?): String? {
+        if (uri == null) return null
+        return try {
+            DocumentsContract.getDocumentId(Uri.parse(uri)).substringBeforeLast('/', "").ifEmpty { null }
+        } catch (e: Exception) { null }
+    }
 
     /** Infos attachées à chaque MediaItem : le service (qui sauvegarde la progression) n'a ainsi pas besoin de retrouver le livre. */
     fun extras(bk: Book): Bundle = Bundle().apply {
@@ -57,16 +60,19 @@ object ProgressFile {
     }
 
     /** Lit le fichier de progression du livre (null s'il n'existe pas ou n'est pas lisible). */
-    fun read(ctx: Context, root: String?, bk: Book): Data? = try {
-        val tree = Uri.parse(root ?: return null)
+    fun read(ctx: Context, root: String?, bk: Book): Data? {
+        if (root == null) return null
         val dir = dirOf(bk) ?: return null
-        val uri = find(ctx, tree, dir)
-        if (uri == null) null
-        else {
-            synchronized(lock) { uriCache[dir] = uri }
-            ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let { parse(it) }
-        }
-    } catch (e: Exception) { null }
+        return try {
+            val tree = Uri.parse(root)
+            val uri = find(ctx, tree, dir)
+            if (uri == null) null
+            else {
+                synchronized(lock) { uriCache[dir] = uri }
+                ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let { parse(it) }
+            }
+        } catch (e: Exception) { null }
+    }
 
     /** L'appli a-t-elle encore le droit d'écrire dans le dossier choisi ? (les anciennes autorisations étaient en lecture seule) */
     fun canWrite(ctx: Context, root: String?): Boolean =
@@ -78,24 +84,33 @@ object ProgressFile {
         ioScope.launch { write(app, root, dir, bookName, d) }
     }
 
-    fun write(ctx: Context, root: String?, dir: String?, bookName: String, d: Data): Boolean = synchronized(lock) {
-        try {
-            val tree = Uri.parse(root ?: return false)
-            if (dir == null) return false
-            val bytes = toBytes(bookName, d)
-            val res = ctx.contentResolver
-            for (attempt in 0..1) {
-                try {
-                    val uri = uriCache[dir] ?: find(ctx, tree, dir)
-                        ?: DocumentsContract.createDocument(res, DocumentsContract.buildDocumentUriUsingTree(tree, dir), "application/octet-stream", NAME)
-                        ?: return false
-                    uriCache[dir] = uri
-                    val os = try { res.openOutputStream(uri, "wt") } catch (e: Exception) { res.openOutputStream(uri, "w") }
-                    os?.use { it.write(bytes) } ?: return false
-                    return true
-                } catch (e: Exception) { uriCache.remove(dir) } // fichier supprimé entre-temps : on relocalise / recrée une fois
+    fun write(ctx: Context, root: String?, dir: String?, bookName: String, d: Data): Boolean {
+        if (root == null || dir == null) return false
+        return synchronized(lock) { writeLocked(ctx, root, dir, bookName, d) }
+    }
+
+    private fun writeLocked(ctx: Context, root: String, dir: String, bookName: String, d: Data): Boolean {
+        val tree = Uri.parse(root)
+        val bytes = toBytes(bookName, d)
+        val res = ctx.contentResolver
+        for (attempt in 0..1) {
+            try {
+                var uri = uriCache[dir] ?: find(ctx, tree, dir)
+                if (uri == null) {
+                    uri = DocumentsContract.createDocument(
+                        res, DocumentsContract.buildDocumentUriUsingTree(tree, dir), "application/octet-stream", NAME
+                    )
+                }
+                if (uri == null) return false
+                uriCache[dir] = uri
+                val os = try { res.openOutputStream(uri, "wt") } catch (e: Exception) { res.openOutputStream(uri, "w") }
+                if (os == null) return false
+                os.use { it.write(bytes) }
+                return true
+            } catch (e: Exception) {
+                uriCache.remove(dir) // fichier supprimé entre-temps : on le relocalise / recrée au 2e essai
             }
-            false
-        } catch (e: Exception) { false }
+        }
+        return false
     }
 }
