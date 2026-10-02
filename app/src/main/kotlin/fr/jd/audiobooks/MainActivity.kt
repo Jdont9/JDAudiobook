@@ -58,7 +58,6 @@ fun App(store: Store) {
     var books by remember { mutableStateOf(store.cachedBooks() ?: emptyList()) }
     var scanProgress by remember { mutableStateOf<ScanProgress?>(null) }
     var cur by remember { mutableStateOf<Book?>(null) }
-    var openTarget by remember { mutableStateOf<Saved?>(null) } // debug : ce qu'on a demandé comme point de départ
     var showStats by remember { mutableStateOf(false) }
     var showEq by remember { mutableStateOf(false) }
     var importMsg by remember { mutableStateOf<String?>(null) }
@@ -98,7 +97,6 @@ fun App(store: Store) {
             val p = PlaybackService.player!!
             PlaybackService.markFreshStart() // on ouvre un livre choisi explicitement : jamais de recul automatique ici
             val s = store.load(bk.path)
-            openTarget = s
             p.setMediaItems(bk.uris.mapIndexed { i, u ->
                 MediaItem.Builder().setUri(u).setMediaMetadata(
                     MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
@@ -106,14 +104,19 @@ fun App(store: Store) {
                         art?.let { setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
                     }.build()).build()
             }, s?.index ?: 0, s?.pos ?: 0)
+            // La sélection d'un livre ne doit jamais lancer la lecture automatiquement.
+            // On prépare le lecteur sur la position sauvegardée, puis seul le bouton « Lire »
+            // (ou une commande externe comme Android Auto) démarre effectivement la lecture.
+            p.pause()
+            p.playWhenReady = false
             p.setPlaybackSpeed(s?.speed ?: 1f)
-            p.prepare(); p.play()
+            p.prepare()
         }
     }
     val b = cur
     when {
         showEq -> EqScreen(store) { showEq = false }
-        b != null -> PlayerScreen(b, store, openTarget, { showEq = true }) { PlaybackService.player?.pause(); cur = null }
+        b != null -> PlayerScreen(b, store, { showEq = true }) { PlaybackService.player?.pause(); cur = null }
         showStats -> StatsScreen(store) { showStats = false }
         else -> Column {
             Surface(color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
@@ -205,7 +208,7 @@ fun App(store: Store) {
 }
 
 @Composable
-fun PlayerScreen(bk: Book, store: Store, openTarget: Saved?, openEq: () -> Unit, back: () -> Unit) {
+fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     val ctx = LocalContext.current
     var tick by remember { mutableStateOf(0) }
     var marks by remember { mutableStateOf(store.marks(bk.path)) }
@@ -237,11 +240,6 @@ fun PlayerScreen(bk: Book, store: Store, openTarget: Saved?, openEq: () -> Unit,
             }
         }
         Text(bk.names.getOrElse(p.currentMediaItemIndex) { "" } + "  (${p.currentMediaItemIndex + 1}/${bk.uris.size})")
-        Text(
-            "Debug — cible : " + (openTarget?.let { "index ${it.index + 1}, ${fmt(it.pos)}" } ?: "aucune (pas de position sauvegardée)") +
-            " · lecteur : index ${p.currentMediaItemIndex + 1}, ${fmt(p.currentPosition)}",
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary
-        )
         if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}")
         val dur = p.duration.coerceAtLeast(1)
         Slider(p.currentPosition.toFloat() / dur, { p.seekTo((it * dur).toLong()) })
