@@ -111,6 +111,10 @@ fun App(store: Store) {
                 delay(50); waited += 50
             }
             val p = PlaybackService.player!!
+            // On arrête d'abord la lecture en cours et on enregistre tout de suite l'ancien livre à sa vraie position
+            // (avant que la playlist ne soit remplacée, et avant de relire la position du livre qu'on ouvre).
+            p.playWhenReady = false
+            PlaybackService.saveNow()
             // La pochette n'est plus bloquante : si elle est longue à lire (pochette intégrée dans un gros
             // fichier, stockage froid), on lance la lecture sans elle plutôt que de laisser l'écran vide.
             val artJob = async(Dispatchers.IO) { Covers.get(ctx, bk)?.let { Covers.jpeg(it) } }
@@ -127,15 +131,13 @@ fun App(store: Store) {
             p.setMediaItems(bk.uris.mapIndexed { i, u ->
                 MediaItem.Builder().setUri(u).setMediaMetadata(
                     MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
-                        .setExtras(Bundle().apply { putString("path", bk.path) }).apply {
+                        .setExtras(ProgressFile.extras(bk)).apply {
                         art?.let { setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
                     }.build()).build()
             }, (s?.index ?: 0).coerceIn(0, bk.uris.lastIndex), s?.pos ?: 0)
             // La sélection d'un livre ne doit jamais lancer la lecture automatiquement.
             // On prépare le lecteur sur la position sauvegardée, puis seul le bouton « Lire »
             // (ou une commande externe comme Android Auto) démarre effectivement la lecture.
-            p.pause()
-            p.playWhenReady = false
             p.setPlaybackSpeed(s?.speed ?: 1f)
             p.prepare()
         }
@@ -260,37 +262,18 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     // cours, service en train de démarrer, ancien livre encore chargé), on affiche un écran de chargement
     // au lieu d'un écran vide, et on n'écrit rien dans les positions sauvegardées.
     val loaded = isLoaded(PlaybackService.player, bk)
-    // Écriture du fichier de progression dans le dossier du livre (hors thread principal, jamais bloquant).
-    val ioScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
-    val appCtx = ctx.applicationContext
-    val persist: () -> Unit = persist@{
-        val pl = PlaybackService.player ?: return@persist
-        if (!isLoaded(pl, bk)) return@persist
-        val i = pl.currentMediaItemIndex.coerceIn(0, bk.uris.lastIndex)
-        val d = ProgressFile.Data(i, bk.names.getOrNull(i), pl.currentPosition, pl.playbackParameters.speed, finished, System.currentTimeMillis())
-        val root = store.root
-        ioScope.launch { ProgressFile.write(appCtx, root, bk, d) }
-    }
-    DisposableEffect(Unit) { onDispose { persist() } } // en quittant l'écran lecteur
     val idx = if (loaded) PlaybackService.player?.currentMediaItemIndex ?: 0 else 0
     LaunchedEffect(loaded, idx) {
-        chaps = if (loaded && idx in bk.uris.indices) withContext(Dispatchers.IO) { Chapters.read(ctx, bk.uris[idx]) } else emptyList()
+        // Les chapitres n'existent que dans les conteneurs MP4 (.m4b/.m4a) : inutile d'ouvrir les autres fichiers.
+        val e = bk.names.getOrNull(idx)?.substringAfterLast('.', "")?.lowercase()
+        chaps = if (loaded && e in setOf("m4b", "m4a", "mp4")) withContext(Dispatchers.IO) { Chapters.read(ctx, bk.uris[idx]) } else emptyList()
     }
+    // Cette boucle ne fait que rafraîchir l'affichage : la progression est sauvegardée par PlaybackService.
     LaunchedEffect(Unit) {
-        var lastWrite = 0L; var lastIdx = Int.MIN_VALUE; var wasPlaying = false
         while (true) {
             delay(500); tick++
             val pl = PlaybackService.player
             if (pl != null && isLoaded(pl, bk)) {
-                store.save(bk.path, pl.currentMediaItemIndex, pl.currentPosition, pl.playbackParameters.speed)
-                // Fichier du dossier : à la mise en pause, au changement de fichier, puis toutes les 20 s en lecture.
-                // (Pas à chaque tick : une écriture SAF est lente, et rien n'est écrit pour un livre juste ouvert.)
-                val now = SystemClock.elapsedRealtime(); val playingNow = pl.playWhenReady
-                if (lastIdx == Int.MIN_VALUE) lastIdx = pl.currentMediaItemIndex
-                else if (pl.currentMediaItemIndex != lastIdx || (wasPlaying && !playingNow) || (playingNow && now - lastWrite > 20_000)) {
-                    lastIdx = pl.currentMediaItemIndex; lastWrite = now; persist()
-                }
-                wasPlaying = playingNow
                 if (pl.playbackState == Player.STATE_READY) {
                     ready = true
                     // Le lecteur connaît la durée exacte du fichier en cours : on s'en sert (gratuit) pour corriger/compléter.
@@ -348,86 +331,109 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     val total = if (durs.all { it > 0 }) durs.sum() else -1L
     val before = durs.take(fi)
     val elapsed = if (before.all { it > 0 }) before.sum() + p.currentPosition else -1L
-    Column(Modifier.padding(16.dp).statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(back) { Text("← Bibliothèque") }
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Cover(bk, 160.dp) }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(bk.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            TextButton({ finished = !finished; store.setFinished(bk.path, finished); persist() }) {
+    val btnPad = PaddingValues(horizontal = 8.dp)
+    // Mise en page : barre du haut + liste défilante (pochette, chapitres, signets) + panneau de commandes FIXE en bas.
+    // Avant, tout était dans une colonne non défilante sans marge pour la barre de navigation : sur un écran
+    // un peu petit, les boutons du bas (dont « + Signet ») étaient poussés hors de l'écran ou sous la barre système.
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(back) { Text("← Bibliothèque") }
+            Spacer(Modifier.weight(1f))
+            TextButton({ finished = !finished; store.setFinished(bk.path, finished); PlaybackService.saveNow() }) {
                 Text(if (finished) "✓ Lu" else "Marquer comme lu")
             }
         }
-        Row(Modifier.fillMaxWidth().clickable { showFiles = true }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(bk.names.getOrElse(fi) { "" } + "  (${fi + 1}/${bk.uris.size})", Modifier.weight(1f))
-            Text("▾", style = MaterialTheme.typography.titleMedium)
-        }
-        if (showFiles) FilePickerDialog(bk, durs, fi, store, onPick = { p.seekTo(it, 0); showFiles = false }, onDismiss = { showFiles = false })
-        if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}")
-        val dur = p.duration.coerceAtLeast(1)
-        Slider(p.currentPosition.toFloat() / dur, { p.seekTo((it * dur).toLong()) })
-        Row { Text(fmt(p.currentPosition), Modifier.weight(1f)); Text(fmt(dur)) }
-        Text(
-            when {
-                total > 0 && elapsed >= 0 -> "Lecture ${fmt(elapsed)} de ${fmt(total)} · ${(elapsed * 100 / total).coerceIn(0, 100)} % · Reste ${fmt((total - elapsed).coerceAtLeast(0))}"
-                probing != null -> "Durée du livre : calcul… ${probing!!.first}/${probing!!.second}"
-                probeFailed -> "Durée du livre : indisponible (fichier illisible)"
-                else -> "Durée du livre : calcul…"
-            },
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            OutlinedButton({
-                if (chaps.isEmpty()) p.seekToPreviousMediaItem()
-                else p.seekTo(if (p.currentPosition - chaps[ci].startMs > 3000) chaps[ci].startMs else chaps.getOrNull(ci - 1)?.startMs ?: 0)
-            }) { Text("⏮") }
-            OutlinedButton({ p.seekBack() }) { Text("-30") }
-            Button({ if (playing) p.pause() else p.play() }) { Text(if (playing) "Pause" else "Lire") }
-            OutlinedButton({ p.seekForward() }) { Text("+30") }
-            OutlinedButton({
-                val n = chaps.getOrNull(ci + 1)
-                if (n != null) p.seekTo(n.startMs) else p.seekToNextMediaItem()
-            }) { Text("⏭") }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                OutlinedButton({ speedMenu = true }) { Text("×${p.playbackParameters.speed}") }
-                DropdownMenu(speedMenu, { speedMenu = false }) {
-                    listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f).forEach { s ->
-                        DropdownMenuItem({ Text("×$s") }, { p.setPlaybackSpeed(s); speedMenu = false })
-                    }
+        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            item {
+                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Cover(bk, 140.dp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(bk.name, style = MaterialTheme.typography.titleLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
-            Box {
-                OutlinedButton({ sleepMenu = true }) { Text(if (left > 0) "Sommeil ${fmt(left)}" else "Sommeil") }
-                DropdownMenu(sleepMenu, { sleepMenu = false }) {
-                    listOf(0, 10, 15, 30, 45, 60, 90).forEach { m ->
-                        DropdownMenuItem({ Text(if (m == 0) "Désactivé" else "$m min") }, { Sleep.set(m); sleepMenu = false })
-                    }
-                }
-            }
-            Text("Silences"); Switch(skipSilence, { skipSilence = it; p.skipSilenceEnabled = it })
-            TextButton(openEq) { Text("Égaliseur") }
-        }
-        Button({
-            marks = marks + Mark(p.currentMediaItemIndex, p.currentPosition, "${bk.names[p.currentMediaItemIndex]} ${fmt(p.currentPosition)}")
-            store.putMarks(bk.path, marks)
-        }) { Text("+ Signet") }
-        LazyColumn(Modifier.weight(1f)) {
             if (chaps.isNotEmpty()) {
                 item { Text("Chapitres", style = MaterialTheme.typography.titleMedium) }
                 itemsIndexed(chaps) { i, c ->
                     Text(
                         "${fmt(c.startMs)}  ${c.title}",
-                        Modifier.fillMaxWidth().clickable { p.seekTo(c.startMs) }.padding(vertical = 6.dp),
+                        Modifier.fillMaxWidth().clickable { p.seekTo(c.startMs) }.padding(vertical = 8.dp),
                         color = if (i == ci) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                 }
             }
-            item { Text("Signets", style = MaterialTheme.typography.titleMedium) }
-            items(marks) { m ->
-                Row(Modifier.fillMaxWidth().clickable { p.seekTo(m.index, m.pos) }, verticalAlignment = Alignment.CenterVertically) {
-                    Text(m.label, Modifier.weight(1f))
+            item { Text("Signets (${marks.size})", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+            if (marks.isEmpty()) item {
+                Text("Aucun signet. Appuie sur « + Signet » pour marquer la position actuelle.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp))
+            }
+            items(marks.sortedWith(compareBy({ it.index }, { it.pos }))) { m ->
+                Row(Modifier.fillMaxWidth().clickable { p.seekTo(m.index.coerceIn(0, bk.uris.lastIndex), m.pos) }, verticalAlignment = Alignment.CenterVertically) {
+                    Text(m.label, Modifier.weight(1f).padding(vertical = 8.dp))
                     TextButton({ marks = marks - m; store.putMarks(bk.path, marks) }) { Text("✕") }
                 }
+            }
+        }
+        HorizontalDivider()
+        Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(Modifier.fillMaxWidth().clickable { showFiles = true }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(bk.names.getOrElse(fi) { "" } + "  (${fi + 1}/${bk.uris.size})", Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text("▾", style = MaterialTheme.typography.titleMedium)
+            }
+            if (showFiles) FilePickerDialog(bk, durs, fi, store, onPick = { p.seekTo(it, 0); showFiles = false }, onDismiss = { showFiles = false })
+            if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+            val dur = p.duration.coerceAtLeast(1)
+            Slider(p.currentPosition.toFloat() / dur, { p.seekTo((it * dur).toLong()) })
+            Row { Text(fmt(p.currentPosition), Modifier.weight(1f)); Text(fmt(dur)) }
+            Text(
+                when {
+                    total > 0 && elapsed >= 0 -> "Lecture ${fmt(elapsed)} de ${fmt(total)} · ${(elapsed * 100 / total).coerceIn(0, 100)} % · Reste ${fmt((total - elapsed).coerceAtLeast(0))}"
+                    probing != null -> "Durée du livre : calcul… ${probing!!.first}/${probing!!.second}"
+                    probeFailed -> "Durée du livre : indisponible (fichier illisible)"
+                    else -> "Durée du livre : calcul…"
+                },
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton({
+                    if (chaps.isEmpty()) p.seekToPreviousMediaItem()
+                    else p.seekTo(if (p.currentPosition - chaps[ci].startMs > 3000) chaps[ci].startMs else chaps.getOrNull(ci - 1)?.startMs ?: 0)
+                }, contentPadding = btnPad) { Text("⏮") }
+                OutlinedButton({ p.seekBack() }, contentPadding = btnPad) { Text("-30") }
+                Button({ if (playing) p.pause() else p.play() }) { Text(if (playing) "Pause" else "Lire") }
+                OutlinedButton({ p.seekForward() }, contentPadding = btnPad) { Text("+30") }
+                OutlinedButton({
+                    val n = chaps.getOrNull(ci + 1)
+                    if (n != null) p.seekTo(n.startMs) else p.seekToNextMediaItem()
+                }, contentPadding = btnPad) { Text("⏭") }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    OutlinedButton({ speedMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { Text("×${p.playbackParameters.speed}") }
+                    DropdownMenu(speedMenu, { speedMenu = false }) {
+                        listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f).forEach { s ->
+                            DropdownMenuItem({ Text("×$s") }, { p.setPlaybackSpeed(s); speedMenu = false })
+                        }
+                    }
+                }
+                Box(Modifier.weight(1f)) {
+                    OutlinedButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { Text(if (left > 0) fmt(left) else "Sommeil", maxLines = 1) }
+                    DropdownMenu(sleepMenu, { sleepMenu = false }) {
+                        listOf(0, 10, 15, 30, 45, 60, 90).forEach { m ->
+                            DropdownMenuItem({ Text(if (m == 0) "Désactivé" else "$m min") }, { Sleep.set(m); sleepMenu = false })
+                        }
+                    }
+                }
+                FilterChip(skipSilence, { skipSilence = !skipSilence; p.skipSilenceEnabled = skipSilence }, { Text("Silences") }, Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton({
+                    val i = p.currentMediaItemIndex.coerceIn(0, bk.uris.lastIndex)
+                    val pos = p.currentPosition
+                    marks = marks + Mark(i, pos, "${bk.names[i]} ${fmt(pos)}")
+                    store.putMarks(bk.path, marks)
+                    android.widget.Toast.makeText(ctx, "Signet ajouté : ${fmt(pos)}", android.widget.Toast.LENGTH_SHORT).show()
+                }, Modifier.weight(1f), contentPadding = btnPad) { Text("+ Signet") }
+                OutlinedButton(openEq, Modifier.weight(1f), contentPadding = btnPad) { Text("Égaliseur") }
             }
         }
     }

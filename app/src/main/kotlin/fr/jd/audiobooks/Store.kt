@@ -18,6 +18,9 @@ data class ScanProgress(val folders: Int, val books: Int)
 
 class Store(private val ctx: Context) {
     private val p = ctx.getSharedPreferences("p", 0)
+    // Le cache de la bibliothèque (toutes les URIs de tous les livres : parfois plusieurs Mo) vit dans son propre
+    // fichier. Avant, il partageait celui des positions : chaque sauvegarde de position réécrivait tout ça.
+    private val lib = ctx.getSharedPreferences("lib", 0)
     var root: String? get() = p.getString("root", null); set(v) { p.edit().putString("root", v).apply() }
 
     // 4e champ = horodatage de la sauvegarde (absent des anciennes sauvegardes = 0) : sert à savoir si le fichier
@@ -37,6 +40,15 @@ class Store(private val ctx: Context) {
         save(path, idx, d.pos, d.speed, d.updated)
         setFinished(path, d.finished)
         return true
+    }
+    /** L'ordre des fichiers d'un livre a changé (tri naturel, fichier ajouté/supprimé) : les index enregistrés
+     *  (position, signets) sont retrouvés par nom de fichier pour continuer à pointer sur les bons fichiers. */
+    fun remapIndices(path: String, oldNames: List<String>, newNames: List<String>) {
+        if (oldNames == newNames) return
+        fun map(i: Int): Int? = oldNames.getOrNull(i)?.let { n -> newNames.indexOf(n) }?.takeIf { it >= 0 }
+        load(path)?.let { s -> map(s.index)?.let { ni -> if (ni != s.index) save(path, ni, s.pos, s.speed, s.updated) } }
+        val ms = marks(path)
+        if (ms.isNotEmpty()) putMarks(path, ms.map { m -> m.copy(index = map(m.index) ?: m.index) })
     }
     fun hasSaved(path: String): Boolean = p.contains("s_$path")
     fun finished(path: String): Boolean = p.getBoolean("fin_$path", false)
@@ -72,11 +84,24 @@ class Store(private val ctx: Context) {
     // Statistiques : temps réel écouté et temps de contenu (tenant compte de la vitesse), par livre et par jour.
     // "t|" = mesuré en direct par l'appli ; "ti|" = importé depuis Smart AudioBook Player (granularité mensuelle,
     // jour fixé au 01 du mois), préfixe séparé pour ne jamais écraser une mesure réelle et rester idempotent.
+    // Cumul en mémoire, écrit par paquets (flushTime) au lieu de réécrire les préférences chaque seconde.
+    private val pendingTime = HashMap<String, LongArray>()
     fun addTime(path: String, wall: Long, content: Long) {
         val day = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-        val k = "t|$path|$day"
-        val v = p.getString(k, "0,0")!!.split(",")
-        p.edit().putString(k, "${v[0].toLong() + wall},${v[1].toLong() + content}").apply()
+        synchronized(pendingTime) {
+            pendingTime.getOrPut("$path|$day") { LongArray(2) }.let { it[0] += wall; it[1] += content }
+        }
+    }
+    fun flushTime() {
+        val snap = synchronized(pendingTime) { HashMap(pendingTime).also { pendingTime.clear() } }
+        if (snap.isEmpty()) return
+        val e = p.edit()
+        snap.forEach { (k, v) ->
+            val key = "t|$k"
+            val old = p.getString(key, "0,0")!!.split(",")
+            e.putString(key, "${old[0].toLong() + v[0]},${old[1].toLong() + v[1]}")
+        }
+        e.apply()
     }
     fun importMonthlyStat(path: String, yearMonth: String, ms: Long) {
         p.edit().putString("ti|$path|${yearMonth}01", "$ms,$ms").apply()
@@ -95,7 +120,13 @@ class Store(private val ctx: Context) {
     // Invalidé automatiquement si la racine change (clé incluant l'URI de la racine).
     private fun cacheKey() = "lib_cache_${root ?: ""}"
     fun cachedBooks(): List<Book>? {
-        val s = p.getString(cacheKey(), null) ?: return null
+        var s = lib.getString(cacheKey(), null)
+        if (s == null) { // migration unique depuis l'ancien emplacement
+            val old = p.getString(cacheKey(), null) ?: return null
+            lib.edit().putString(cacheKey(), old).apply()
+            p.edit().remove(cacheKey()).apply()
+            s = old
+        }
         return try {
             val a = JSONArray(s)
             (0 until a.length()).map { i ->
@@ -121,7 +152,8 @@ class Store(private val ctx: Context) {
                 bk.dir?.let { put("d", it) }
             })
         }
-        p.edit().putString(cacheKey(), a.toString()).apply()
+        lib.edit().putString(cacheKey(), a.toString()).apply()
+        p.edit().remove(cacheKey()).apply()
     }
 
     /** Bibliothèque pour le service (Android Auto, notifications…) : le cache d'abord, un scan complet
@@ -146,6 +178,7 @@ class Store(private val ctx: Context) {
         val img = setOf("jpg", "jpeg", "png", "webp")
         val resolver = ctx.contentResolver
         val out = mutableListOf<Book>()
+        val prev = cachedBooks()?.associateBy { it.path } ?: emptyMap() // ordre des fichiers avant ce scan
         var folders = 0
         var lastTick = 0L
         var sabpFound = 0
@@ -194,13 +227,14 @@ class Store(private val ctx: Context) {
             folders++
             val kids = children(dirId)
             val files = kids.filter { !it.isDir }
-            val audio = files.filter { ext(it.name) in ext }.sortedBy { it.name.lowercase() }
+            val audio = files.filter { ext(it.name) in ext }.sortedWith(Comparator { a, b -> naturalCompare(a.name.lowercase(), b.name.lowercase()) })
             if (audio.isNotEmpty()) {
                 val im = files.filter { ext(it.name) in img }
                 val cv = (im.firstOrNull { f -> listOf("cover", "folder", "front").any { f.name.lowercase().contains(it) } } ?: im.firstOrNull())
                     ?.let { uriFor(it.id) }
                 val bk = Book(path, label, audio.map { uriFor(it.id) }, audio.map { it.name }, cv, dirId)
                 out += bk
+                prev[path]?.let { remapIndices(path, it.names, bk.names) }
                 // Fichier de progression de l'appli (à côté des fichiers audio) : prioritaire. S'il existe et est
                 // lisible, celui de Smart Player est ignoré ; sinon on retombe sur la logique Smart ci-dessous.
                 var hasJd = false

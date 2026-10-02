@@ -17,6 +17,30 @@ class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
     private val h = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val store by lazy { Store(this) }
+    private var playTicks = 0
+
+    // La progression est sauvegardée ICI, dans le service : elle ne dépend plus de l'écran lecteur (qui peut être
+    // fermé/détruit alors que la lecture continue, ou ne jamais avoir existé en Android Auto).
+    // file = true : écrit aussi position.jd.json dans le dossier du livre (en arrière-plan).
+    private fun persist(file: Boolean) {
+        val pl = player ?: return
+        val item = pl.currentMediaItem ?: return
+        val ex = item.mediaMetadata.extras ?: return
+        val path = ex.getString("path") ?: return
+        val i = pl.currentMediaItemIndex
+        val pos = pl.currentPosition
+        store.save(path, i, pos, pl.playbackParameters.speed)
+        if (file) {
+            store.flushTime()
+            ProgressFile.writeAsync(
+                this, store.root, ex.getString("dir"), ex.getString("book") ?: "",
+                ProgressFile.Data(i, item.mediaMetadata.title?.toString(), pos, pl.playbackParameters.speed, store.finished(path), System.currentTimeMillis())
+            )
+        }
+    }
+    // Après un déplacement (curseur, chapitre, signet) : on attend que ça se stabilise avant d'écrire.
+    private val seekPersist = Runnable { persist(true) }
 
     companion object {
         var player: ExoPlayer? = null
@@ -26,6 +50,9 @@ class PlaybackService : MediaLibraryService() {
         // qu'on vient d'importer/reprendre, l'écrasant par une position plus ancienne.
         private var pausedAt = 0L
         fun markFreshStart() { pausedAt = 0L }
+        private var self: PlaybackService? = null
+        /** Sauvegarde immédiate (position + fichier du dossier), p. ex. après « Marquer comme lu ». */
+        fun saveNow() { self?.persist(true) }
         const val ACTION_PLAY_PAUSE = "fr.jd.audiobooks.PLAY_PAUSE"
         const val ACTION_NEXT = "fr.jd.audiobooks.NEXT"
         const val ACTION_PREV = "fr.jd.audiobooks.PREV"
@@ -54,7 +81,7 @@ class PlaybackService : MediaLibraryService() {
         MediaItem.Builder().setMediaId("track:${bk.path}|$i").setUri(bk.uris[i]).setMediaMetadata(
             MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
                 .setIsBrowsable(false).setIsPlayable(true).setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
-                .setExtras(android.os.Bundle().apply { putString("path", bk.path) })
+                .setExtras(ProgressFile.extras(bk))
                 .apply { art?.let { setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) } }.build()
         ).build()
 
@@ -151,9 +178,18 @@ class PlaybackService : MediaLibraryService() {
             override fun onAudioSessionIdChanged(sessionId: Int) { Eq.attach(sessionId, Store(this@PlaybackService)) }
             override fun onEvents(pl: Player, e: Player.Events) { JdWidget.updateAll(this@PlaybackService) }
             // Retour arrière automatique à la reprise, proportionnel à la durée de pause
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Changement de fichier en cours de lecture (pas le simple chargement d'une playlist).
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) persist(true)
+            }
+            override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                    h.removeCallbacks(seekPersist); h.postDelayed(seekPersist, 1000)
+                }
+            }
             override fun onPlayWhenReadyChanged(pwr: Boolean, reason: Int) {
                 val now = SystemClock.elapsedRealtime()
-                if (!pwr) pausedAt = now
+                if (!pwr) { pausedAt = now; persist(true) }
                 else if (pausedAt > 0) {
                     val s = (now - pausedAt) / 1000
                     val back = when { s < 5 -> 0L; s < 300 -> 3_000L; s < 3600 -> 10_000L; else -> 20_000L }
@@ -161,22 +197,34 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
         })
-        val store = Store(this)
         h.postDelayed(object : Runnable {
             override fun run() {
-                if (p.isPlaying) p.mediaMetadata.extras?.getString("path")?.let {
-                    store.addTime(it, 1000, (1000 * p.playbackParameters.speed).toLong())
+                if (p.isPlaying) {
+                    p.mediaMetadata.extras?.getString("path")?.let {
+                        store.addTime(it, 1000, (1000 * p.playbackParameters.speed).toLong())
+                    }
+                    playTicks++
+                    // Position : toutes les 5 s ; avec le fichier du dossier (et les stats) : toutes les 20 s.
+                    if (playTicks % 20 == 0) persist(true) else if (playTicks % 5 == 0) persist(false)
                 }
                 h.postDelayed(this, 1000)
             }
         }, 1000)
         player = p
+        self = this
         session = MediaLibrarySession.Builder(this, p, libraryCallback).build()
     }
 
     override fun onGetSession(c: MediaSession.ControllerInfo) = session
 
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
+        persist(true)
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        persist(true)
+        self = null
         h.removeCallbacksAndMessages(null)
         scope.cancel()
         session?.release(); player?.release(); player = null

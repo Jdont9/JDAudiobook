@@ -2,7 +2,9 @@ package fr.jd.audiobooks
 
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import android.provider.DocumentsContract
+import kotlinx.coroutines.*
 import org.json.JSONObject
 
 /**
@@ -16,6 +18,7 @@ object ProgressFile {
     data class Data(val index: Int, val file: String?, val pos: Long, val speed: Float, val finished: Boolean, val updated: Long)
 
     private val lock = Any()
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO) // indépendant de l'UI et du service
     private val uriCache = HashMap<String, Uri>() // dossier -> uri du fichier, pour ne pas relister à chaque écriture
 
     fun parse(bytes: ByteArray): Data? = try {
@@ -34,9 +37,15 @@ object ProgressFile {
         .toString(2).toByteArray(Charsets.UTF_8)
 
     /** Identifiant SAF du dossier du livre : mémorisé au scan, sinon déduit du premier fichier audio. */
-    private fun dirId(bk: Book): String? = bk.dir ?: try {
-        DocumentsContract.getDocumentId(Uri.parse(bk.uris[0])).substringBeforeLast('/', "").ifEmpty { null }
+    fun dirOf(bk: Book): String? = bk.dir ?: dirFromUri(bk.uris.firstOrNull())
+    private fun dirFromUri(uri: String?): String? = try {
+        DocumentsContract.getDocumentId(Uri.parse(uri ?: return null)).substringBeforeLast('/', "").ifEmpty { null }
     } catch (e: Exception) { null }
+
+    /** Infos attachées à chaque MediaItem : le service (qui sauvegarde la progression) n'a ainsi pas besoin de retrouver le livre. */
+    fun extras(bk: Book): Bundle = Bundle().apply {
+        putString("path", bk.path); putString("book", bk.name); dirOf(bk)?.let { putString("dir", it) }
+    }
 
     private fun find(ctx: Context, tree: Uri, dirId: String): Uri? {
         val kids = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId)
@@ -50,7 +59,7 @@ object ProgressFile {
     /** Lit le fichier de progression du livre (null s'il n'existe pas ou n'est pas lisible). */
     fun read(ctx: Context, root: String?, bk: Book): Data? = try {
         val tree = Uri.parse(root ?: return null)
-        val dir = dirId(bk) ?: return null
+        val dir = dirOf(bk) ?: return null
         val uri = find(ctx, tree, dir)
         if (uri == null) null
         else {
@@ -64,11 +73,16 @@ object ProgressFile {
         root != null && ctx.contentResolver.persistedUriPermissions.any { it.uri.toString() == root && it.isWritePermission }
 
     /** Écrit (ou crée) le fichier dans le dossier du livre. À appeler hors du thread principal. */
-    fun write(ctx: Context, root: String?, bk: Book, d: Data): Boolean = synchronized(lock) {
+    fun writeAsync(ctx: Context, root: String?, dir: String?, bookName: String, d: Data) {
+        val app = ctx.applicationContext
+        ioScope.launch { write(app, root, dir, bookName, d) }
+    }
+
+    fun write(ctx: Context, root: String?, dir: String?, bookName: String, d: Data): Boolean = synchronized(lock) {
         try {
             val tree = Uri.parse(root ?: return false)
-            val dir = dirId(bk) ?: return false
-            val bytes = toBytes(bk.name, d)
+            if (dir == null) return false
+            val bytes = toBytes(bookName, d)
             val res = ctx.contentResolver
             for (attempt in 0..1) {
                 try {
