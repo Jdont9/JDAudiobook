@@ -9,9 +9,9 @@ import java.util.*
 
 // path : chemin relatif à la racine choisie (ex. "Millenium/Millenium 1 - ..."), identifiant stable du livre,
 // aligné sur le format utilisé par Smart AudioBook Player pour pouvoir croiser ses données.
-data class Book(val path: String, val name: String, val uris: List<String>, val names: List<String>, val cover: String? = null)
+data class Book(val path: String, val name: String, val uris: List<String>, val names: List<String>, val cover: String? = null, val dir: String? = null)
 data class Mark(val index: Int, val pos: Long, val label: String)
-data class Saved(val index: Int, val pos: Long, val speed: Float)
+data class Saved(val index: Int, val pos: Long, val speed: Float, val updated: Long = 0L)
 data class Stat(val book: String, val day: String, val wall: Long, val content: Long)
 /** Avancement du scan pendant qu'il tourne : nombre de dossiers déjà explorés et de livres déjà trouvés. */
 data class ScanProgress(val folders: Int, val books: Int)
@@ -20,12 +20,45 @@ class Store(private val ctx: Context) {
     private val p = ctx.getSharedPreferences("p", 0)
     var root: String? get() = p.getString("root", null); set(v) { p.edit().putString("root", v).apply() }
 
-    fun save(path: String, i: Int, pos: Long, speed: Float) =
-        p.edit().putString("s_$path", "$i|$pos|$speed").apply()
-    fun load(path: String): Saved? = p.getString("s_$path", null)?.split("|")?.let { Saved(it[0].toInt(), it[1].toLong(), it[2].toFloat()) }
+    // 4e champ = horodatage de la sauvegarde (absent des anciennes sauvegardes = 0) : sert à savoir si le fichier
+    // de progression du dossier du livre est plus récent que ce qu'on a ici.
+    fun save(path: String, i: Int, pos: Long, speed: Float, updated: Long = System.currentTimeMillis()) =
+        p.edit().putString("s_$path", "$i|$pos|$speed|$updated").apply()
+    fun load(path: String): Saved? = p.getString("s_$path", null)?.split("|")?.let {
+        Saved(it[0].toInt(), it[1].toLong(), it[2].toFloat(), it.getOrNull(3)?.toLongOrNull() ?: 0L)
+    }
+
+    /** Applique le fichier de progression du dossier s'il est plus récent que la sauvegarde locale. */
+    fun applyProgressFile(path: String, names: List<String>, d: ProgressFile.Data): Boolean {
+        if (names.isEmpty()) return false
+        val idx = d.file?.let { fn -> names.indexOf(fn) }?.takeIf { it >= 0 } ?: d.index.coerceIn(0, names.lastIndex)
+        val cur = load(path)
+        if (cur != null && d.updated <= cur.updated) return false
+        save(path, idx, d.pos, d.speed, d.updated)
+        setFinished(path, d.finished)
+        return true
+    }
     fun hasSaved(path: String): Boolean = p.contains("s_$path")
     fun finished(path: String): Boolean = p.getBoolean("fin_$path", false)
     fun setFinished(path: String, v: Boolean) = p.edit().putBoolean("fin_$path", v).apply()
+
+    // ---- Durées des fichiers d'un livre (en ms, <= 0 = inconnue). Calculées une seule fois en arrière-plan
+    // puis gardées ici. La signature (hash des noms de fichiers) invalide automatiquement le cache si le
+    // contenu du dossier change.
+    fun durations(bk: Book): List<Long> {
+        val unknown = List(bk.uris.size) { -1L }
+        val raw = p.getString("dur_${bk.path}", null) ?: return unknown
+        val sig = raw.substringBefore('|')
+        if (sig != bk.names.hashCode().toString()) return unknown
+        val l = raw.substringAfter('|').split(",").map { it.toLongOrNull() ?: -1L }
+        return if (l.size == bk.uris.size) l else unknown
+    }
+    fun putDurations(bk: Book, l: List<Long>) =
+        p.edit().putString("dur_${bk.path}", "${bk.names.hashCode()}|${l.joinToString(",")}").apply()
+
+    // Petits réglages d'interface (cases à cocher du sélecteur de fichiers, etc.)
+    fun flag(k: String, def: Boolean = false): Boolean = p.getBoolean("f_$k", def)
+    fun setFlag(k: String, v: Boolean) = p.edit().putBoolean("f_$k", v).apply()
 
     fun marks(path: String): List<Mark> {
         val a = JSONArray(p.getString("b_$path", "[]"))
@@ -72,7 +105,8 @@ class Store(private val ctx: Context) {
                     o.getString("p"), o.getString("l"),
                     (0 until uris.length()).map { uris.getString(it) },
                     (0 until names.length()).map { names.getString(it) },
-                    if (o.has("c")) o.getString("c") else null
+                    if (o.has("c")) o.getString("c") else null,
+                    if (o.has("d")) o.getString("d") else null
                 )
             }
         } catch (e: Exception) { null }
@@ -84,10 +118,16 @@ class Store(private val ctx: Context) {
                 put("p", bk.path); put("l", bk.name)
                 put("u", JSONArray(bk.uris)); put("n", JSONArray(bk.names))
                 bk.cover?.let { put("c", it) }
+                bk.dir?.let { put("d", it) }
             })
         }
         p.edit().putString(cacheKey(), a.toString()).apply()
     }
+
+    /** Bibliothèque pour le service (Android Auto, notifications…) : le cache d'abord, un scan complet
+     *  seulement s'il n'y en a pas encore. Avant, chaque requête d'un client média relançait un scan SAF
+     *  complet en tâche de fond, en concurrence avec l'ouverture du livre dans l'appli. */
+    fun library(): List<Book> = cachedBooks() ?: scan()
 
     // ---- Diagnostic Smart Player : rempli à chaque scan(), lu par l'UI juste après pour savoir
     // précisément où ça coince (fichier introuvable / illisible / déjà à jour) plutôt que de deviner.
@@ -159,8 +199,16 @@ class Store(private val ctx: Context) {
                 val im = files.filter { ext(it.name) in img }
                 val cv = (im.firstOrNull { f -> listOf("cover", "folder", "front").any { f.name.lowercase().contains(it) } } ?: im.firstOrNull())
                     ?.let { uriFor(it.id) }
-                val bk = Book(path, label, audio.map { uriFor(it.id) }, audio.map { it.name }, cv)
+                val bk = Book(path, label, audio.map { uriFor(it.id) }, audio.map { it.name }, cv, dirId)
                 out += bk
+                // Fichier de progression de l'appli (à côté des fichiers audio) : prioritaire. S'il existe et est
+                // lisible, celui de Smart Player est ignoré ; sinon on retombe sur la logique Smart ci-dessous.
+                var hasJd = false
+                files.firstOrNull { it.name == ProgressFile.NAME }?.let { jf ->
+                    val pj = try { resolver.openInputStream(Uri.parse(uriFor(jf.id)))?.use { it.readBytes() } } catch (e: Exception) { null }
+                        ?.let { ProgressFile.parse(it) }
+                    if (pj != null) { hasJd = true; applyProgressFile(path, bk.names, pj) }
+                }
                 // Le drapeau "Finished" est toujours relu (idempotent, il ne fait qu'ajouter l'état "lu").
                 // Pour la position : on compare à ce que JD a déjà, et on n'importe que si Smart Player est
                 // plus avancé (jamais de recul).
@@ -170,10 +218,10 @@ class Store(private val ctx: Context) {
                 var bytes: ByteArray? = null
                 var errListed: String? = null
                 var errGuessed: String? = null
-                if (listed != null) {
+                if (listed != null && !hasJd) {
                     try { bytes = resolver.openInputStream(Uri.parse(listed))?.use { it.readBytes() } } catch (e: Exception) { errListed = e.toString() }
                 }
-                if (bytes == null && guessed != null) {
+                if (bytes == null && guessed != null && !hasJd) {
                     try { bytes = resolver.openInputStream(Uri.parse(guessed))?.use { it.readBytes() } } catch (e: Exception) { errGuessed = e.toString() }
                 }
                 // Trois vidages ciblés plutôt qu'un seul pris au hasard : le premier dossier où le fichier

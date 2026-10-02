@@ -77,10 +77,10 @@ class PlaybackService : MediaLibraryService() {
                 val store = Store(this@PlaybackService)
                 val items = withContext(Dispatchers.IO) {
                     when {
-                        parentId == ROOT_ID -> store.scan().map { bookItem(it) }
+                        parentId == ROOT_ID -> store.library().map { bookItem(it) }
                         parentId.startsWith("book:") -> {
                             val path = parentId.removePrefix("book:")
-                            val bk = store.scan().firstOrNull { it.path == path }
+                            val bk = store.library().firstOrNull { it.path == path }
                             if (bk == null) emptyList() else {
                                 val art = Covers.get(this@PlaybackService, bk)?.let { Covers.jpeg(it) }
                                 bk.uris.indices.map { trackItem(bk, it, art) }
@@ -101,11 +101,11 @@ class PlaybackService : MediaLibraryService() {
                 val item = withContext(Dispatchers.IO) {
                     if (mediaId.startsWith("track:")) {
                         val (path, idx) = mediaId.removePrefix("track:").split("|")
-                        val bk = store.scan().firstOrNull { it.path == path }
+                        val bk = store.library().firstOrNull { it.path == path }
                         val art = bk?.let { Covers.get(this@PlaybackService, it) }?.let { Covers.jpeg(it) }
                         bk?.let { trackItem(it, idx.toInt(), art) }
                     } else if (mediaId.startsWith("book:")) {
-                        store.scan().firstOrNull { it.path == mediaId.removePrefix("book:") }?.let { bookItem(it) }
+                        store.library().firstOrNull { it.path == mediaId.removePrefix("book:") }?.let { bookItem(it) }
                     } else null
                 }
                 future.set(if (item != null) LibraryResult.ofItem(item, null) else LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
@@ -128,7 +128,7 @@ class PlaybackService : MediaLibraryService() {
                 val (path, idx) = if (requested.startsWith("track:"))
                     requested.removePrefix("track:").split("|").let { it[0] to it[1].toInt() }
                 else requested.removePrefix("book:") to 0
-                val bk = withContext(Dispatchers.IO) { store.scan().firstOrNull { it.path == path } }
+                val bk = withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } }
                 if (bk == null) { future.set(MediaItemsWithStartPosition(ImmutableList.of(), 0, 0)); return@launch }
                 val art = withContext(Dispatchers.IO) { Covers.get(this@PlaybackService, bk)?.let { Covers.jpeg(it) } }
                 val items = bk.uris.indices.map { trackItem(bk, it, art) }

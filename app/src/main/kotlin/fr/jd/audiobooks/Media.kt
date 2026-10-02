@@ -128,6 +128,18 @@ object Chapters {
     }
 }
 
+/** Durée d'un fichier audio, lue dans ses en-têtes (sans le décoder). -1 si illisible. */
+object Durations {
+    fun probe(ctx: Context, uri: String): Long = try {
+        MediaMetadataRetriever().run {
+            try {
+                setDataSource(ctx, Uri.parse(uri))
+                extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.takeIf { it > 0 } ?: -1L
+            } finally { release() }
+        }
+    } catch (e: Exception) { -1L }
+}
+
 /** Pochette : image du dossier (cover/folder/front) sinon image intégrée au premier fichier. */
 object Covers {
     private val cache = LruCache<String, Bitmap>(16)

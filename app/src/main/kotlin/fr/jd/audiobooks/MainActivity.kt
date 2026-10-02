@@ -27,6 +27,15 @@ import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.*
 
+/** Sélecteur de dossier qui demande aussi l'écriture (pour le fichier de progression à côté des fichiers audio). */
+class OpenTreeRW : ActivityResultContracts.OpenDocumentTree() {
+    override fun createIntent(context: android.content.Context, input: android.net.Uri?): Intent =
+        super.createIntent(context, input).addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+        )
+}
+
 fun fmt(ms: Long): String { val s = ms / 1000; return "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) }
 
 class MainActivity : ComponentActivity() {
@@ -73,9 +82,10 @@ fun App(store: Store) {
     // Pas de scan automatique à l'ouverture : la liste vient uniquement du cache. Un scan ne se
     // déclenche que sur une action explicite (bouton "Dossier" la première fois, ou "Rescan").
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u ->
+    val picker = rememberLauncherForActivityResult(OpenTreeRW()) { u ->
         if (u != null) {
-            ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            try { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+            catch (e: Exception) { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             store.root = u.toString()
             books = emptyList()
             scope.launch { rescan() }
@@ -89,21 +99,38 @@ fun App(store: Store) {
             importMsg = "$matched livre(s) sur $total importé(s) depuis statistics.xml"
         }
     }
+    var openJob by remember { mutableStateOf<Job?>(null) }
     fun open(bk: Book) {
         cur = bk
-        scope.launch {
-            val art = Covers.get(ctx, bk)?.let { Covers.jpeg(it) }
-            while (PlaybackService.player == null) delay(50)
+        openJob?.cancel()
+        openJob = scope.launch {
+            var waited = 0
+            while (PlaybackService.player == null) {
+                // Filet de sécurité : si le service n'a pas démarré (ou a été arrêté), on le relance.
+                if (waited % 1000 == 0) try { ctx.startService(Intent(ctx, PlaybackService::class.java)) } catch (e: Exception) { }
+                delay(50); waited += 50
+            }
             val p = PlaybackService.player!!
-            PlaybackService.markFreshStart() // on ouvre un livre choisi explicitement : jamais de recul automatique ici
+            // La pochette n'est plus bloquante : si elle est longue à lire (pochette intégrée dans un gros
+            // fichier, stockage froid), on lance la lecture sans elle plutôt que de laisser l'écran vide.
+            val artJob = async(Dispatchers.IO) { Covers.get(ctx, bk)?.let { Covers.jpeg(it) } }
+            // Fichier de progression du dossier (position.jd.json) : s'il est plus récent que la sauvegarde locale
+            // (livre repris sur un autre appareil, par ex.), il est appliqué avant de lire la position.
+            val syncJob = async(Dispatchers.IO) {
+                ProgressFile.read(ctx, store.root, bk)?.let { store.applyProgressFile(bk.path, bk.names, it) }
+            }
+            val art = withTimeoutOrNull(2000) { artJob.await() }
+            withTimeoutOrNull(1500) { syncJob.await() }
+            // Lecture de la position seulement ici : l'écran lecteur n'écrit rien tant que le livre n'est pas chargé.
             val s = store.load(bk.path)
+            PlaybackService.markFreshStart() // on ouvre un livre choisi explicitement : jamais de recul automatique ici
             p.setMediaItems(bk.uris.mapIndexed { i, u ->
                 MediaItem.Builder().setUri(u).setMediaMetadata(
                     MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
                         .setExtras(Bundle().apply { putString("path", bk.path) }).apply {
                         art?.let { setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
                     }.build()).build()
-            }, s?.index ?: 0, s?.pos ?: 0)
+            }, (s?.index ?: 0).coerceIn(0, bk.uris.lastIndex), s?.pos ?: 0)
             // La sélection d'un livre ne doit jamais lancer la lecture automatiquement.
             // On prépare le lecteur sur la position sauvegardée, puis seul le bouton « Lire »
             // (ou une commande externe comme Android Auto) démarre effectivement la lecture.
@@ -116,7 +143,7 @@ fun App(store: Store) {
     val b = cur
     when {
         showEq -> EqScreen(store) { showEq = false }
-        b != null -> PlayerScreen(b, store, { showEq = true }) { PlaybackService.player?.pause(); cur = null }
+        b != null -> PlayerScreen(b, store, { showEq = true }) { openJob?.cancel(); PlaybackService.player?.pause(); cur = null }
         showStats -> StatsScreen(store) { showStats = false }
         else -> Column {
             Surface(color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
@@ -138,6 +165,12 @@ fun App(store: Store) {
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary
                     )
                 }
+            }
+            if (store.root != null && !ProgressFile.canWrite(ctx, store.root)) {
+                Text(
+                    "Écriture non autorisée sur ce dossier : appuie sur « Dossier » et choisis-le à nouveau pour enregistrer la progression à côté des fichiers audio.",
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
+                )
             }
             importMsg?.let {
                 Text(it, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
@@ -168,6 +201,7 @@ fun App(store: Store) {
                 items(shown, key = { it.path }) { bk ->
                     val s = store.load(bk.path)
                     val finished = store.finished(bk.path)
+                    val total = remember(bk.path) { store.durations(bk).takeIf { d -> d.all { it > 0 } }?.sum() }
                     Row(
                         Modifier.fillMaxWidth().clickable { open(bk) }.padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.Top
@@ -193,7 +227,7 @@ fun App(store: Store) {
                                     finished -> "Terminé"
                                     s != null -> "Reprise ${s.index + 1}/${bk.uris.size} à ${fmt(s.pos)}"
                                     else -> "${bk.uris.size} fichier(s)"
-                                },
+                                } + (total?.let { " · ${fmt(it)}" } ?: ""),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.align(Alignment.End)
@@ -217,33 +251,130 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     var sleepMenu by remember { mutableStateOf(false) }
     var skipSilence by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf(store.finished(bk.path)) }
-    val idx = PlaybackService.player?.currentMediaItemIndex ?: 0
-    LaunchedEffect(idx) { chaps = withContext(Dispatchers.IO) { Chapters.read(ctx, bk.uris[idx]) } }
+    var durs by remember { mutableStateOf(store.durations(bk)) }
+    var probing by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var probeFailed by remember { mutableStateOf(false) }
+    var ready by remember { mutableStateOf(false) }
+    var showFiles by remember { mutableStateOf(false) }
+    // "loaded" : le lecteur contient bien la playlist de CE livre. Tant que ce n'est pas le cas (ouverture en
+    // cours, service en train de démarrer, ancien livre encore chargé), on affiche un écran de chargement
+    // au lieu d'un écran vide, et on n'écrit rien dans les positions sauvegardées.
+    val loaded = isLoaded(PlaybackService.player, bk)
+    // Écriture du fichier de progression dans le dossier du livre (hors thread principal, jamais bloquant).
+    val ioScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    val appCtx = ctx.applicationContext
+    val persist: () -> Unit = persist@{
+        val pl = PlaybackService.player ?: return@persist
+        if (!isLoaded(pl, bk)) return@persist
+        val i = pl.currentMediaItemIndex.coerceIn(0, bk.uris.lastIndex)
+        val d = ProgressFile.Data(i, bk.names.getOrNull(i), pl.currentPosition, pl.playbackParameters.speed, finished, System.currentTimeMillis())
+        val root = store.root
+        ioScope.launch { ProgressFile.write(appCtx, root, bk, d) }
+    }
+    DisposableEffect(Unit) { onDispose { persist() } } // en quittant l'écran lecteur
+    val idx = if (loaded) PlaybackService.player?.currentMediaItemIndex ?: 0 else 0
+    LaunchedEffect(loaded, idx) {
+        chaps = if (loaded && idx in bk.uris.indices) withContext(Dispatchers.IO) { Chapters.read(ctx, bk.uris[idx]) } else emptyList()
+    }
     LaunchedEffect(Unit) {
+        var lastWrite = 0L; var lastIdx = Int.MIN_VALUE; var wasPlaying = false
         while (true) {
             delay(500); tick++
-            PlaybackService.player?.let { store.save(bk.path, it.currentMediaItemIndex, it.currentPosition, it.playbackParameters.speed) }
+            val pl = PlaybackService.player
+            if (pl != null && isLoaded(pl, bk)) {
+                store.save(bk.path, pl.currentMediaItemIndex, pl.currentPosition, pl.playbackParameters.speed)
+                // Fichier du dossier : à la mise en pause, au changement de fichier, puis toutes les 20 s en lecture.
+                // (Pas à chaque tick : une écriture SAF est lente, et rien n'est écrit pour un livre juste ouvert.)
+                val now = SystemClock.elapsedRealtime(); val playingNow = pl.playWhenReady
+                if (lastIdx == Int.MIN_VALUE) lastIdx = pl.currentMediaItemIndex
+                else if (pl.currentMediaItemIndex != lastIdx || (wasPlaying && !playingNow) || (playingNow && now - lastWrite > 20_000)) {
+                    lastIdx = pl.currentMediaItemIndex; lastWrite = now; persist()
+                }
+                wasPlaying = playingNow
+                if (pl.playbackState == Player.STATE_READY) {
+                    ready = true
+                    // Le lecteur connaît la durée exacte du fichier en cours : on s'en sert (gratuit) pour corriger/compléter.
+                    val d = pl.duration; val i = pl.currentMediaItemIndex
+                    if (d > 0 && i in durs.indices && kotlin.math.abs(durs[i] - d) > 500) {
+                        durs = durs.toMutableList().also { it[i] = d }
+                        store.putDurations(bk, durs)
+                    }
+                }
+            }
         }
     }
+    // Durée totale du livre : calculée en arrière-plan, un fichier à la fois, SEULEMENT une fois la lecture
+    // prête (donc sans ralentir l'ouverture), puis mémorisée : les ouvertures suivantes sont instantanées.
+    LaunchedEffect(bk.path, ready) {
+        if (!ready) return@LaunchedEffect
+        delay(1500)
+        val todo = durs.indices.filter { durs[it] <= 0 }
+        if (todo.isEmpty()) return@LaunchedEffect
+        var done = 0; var failed = 0
+        probing = 0 to todo.size
+        try {
+            for (i in todo) {
+                val d = withContext(Dispatchers.IO) { Durations.probe(ctx, bk.uris[i]) }
+                if (d > 0) { if (durs[i] <= 0) durs = durs.toMutableList().also { it[i] = d } } else failed++
+                done++; probing = done to todo.size
+            }
+        } finally {
+            withContext(NonCancellable) { store.putDurations(bk, durs) }
+        }
+        probeFailed = failed > 0
+        probing = null
+    }
     tick.let { }
-    val p = PlaybackService.player ?: return
+    val p = PlaybackService.player
+    if (!loaded || p == null) {
+        Column(Modifier.fillMaxSize().padding(16.dp).statusBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+            TextButton(back, Modifier.align(Alignment.Start)) { Text("← Bibliothèque") }
+            Spacer(Modifier.weight(1f))
+            Cover(bk, 160.dp)
+            Spacer(Modifier.height(16.dp))
+            Text(bk.name, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(16.dp))
+            CircularProgressIndicator()
+            Spacer(Modifier.height(8.dp))
+            Text("Chargement…", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.weight(1f))
+        }
+        return
+    }
     val playing = p.playWhenReady
     val left = (Sleep.endAt - SystemClock.elapsedRealtime()).coerceAtLeast(0)
     val ci = chaps.indexOfLast { it.startMs <= p.currentPosition }.coerceAtLeast(0)
+    val fi = p.currentMediaItemIndex.coerceIn(0, bk.uris.lastIndex)
+    val total = if (durs.all { it > 0 }) durs.sum() else -1L
+    val before = durs.take(fi)
+    val elapsed = if (before.all { it > 0 }) before.sum() + p.currentPosition else -1L
     Column(Modifier.padding(16.dp).statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TextButton(back) { Text("← Bibliothèque") }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Cover(bk, 160.dp) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(bk.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            TextButton({ finished = !finished; store.setFinished(bk.path, finished) }) {
+            TextButton({ finished = !finished; store.setFinished(bk.path, finished); persist() }) {
                 Text(if (finished) "✓ Lu" else "Marquer comme lu")
             }
         }
-        Text(bk.names.getOrElse(p.currentMediaItemIndex) { "" } + "  (${p.currentMediaItemIndex + 1}/${bk.uris.size})")
+        Row(Modifier.fillMaxWidth().clickable { showFiles = true }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(bk.names.getOrElse(fi) { "" } + "  (${fi + 1}/${bk.uris.size})", Modifier.weight(1f))
+            Text("▾", style = MaterialTheme.typography.titleMedium)
+        }
+        if (showFiles) FilePickerDialog(bk, durs, fi, store, onPick = { p.seekTo(it, 0); showFiles = false }, onDismiss = { showFiles = false })
         if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}")
         val dur = p.duration.coerceAtLeast(1)
         Slider(p.currentPosition.toFloat() / dur, { p.seekTo((it * dur).toLong()) })
         Row { Text(fmt(p.currentPosition), Modifier.weight(1f)); Text(fmt(dur)) }
+        Text(
+            when {
+                total > 0 && elapsed >= 0 -> "Lecture ${fmt(elapsed)} de ${fmt(total)} · ${(elapsed * 100 / total).coerceIn(0, 100)} % · Reste ${fmt((total - elapsed).coerceAtLeast(0))}"
+                probing != null -> "Durée du livre : calcul… ${probing!!.first}/${probing!!.second}"
+                probeFailed -> "Durée du livre : indisponible (fichier illisible)"
+                else -> "Durée du livre : calcul…"
+            },
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             OutlinedButton({
                 if (chaps.isEmpty()) p.seekToPreviousMediaItem()
