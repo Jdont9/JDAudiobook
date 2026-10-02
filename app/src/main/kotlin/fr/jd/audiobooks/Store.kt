@@ -187,9 +187,14 @@ class Store(private val ctx: Context) {
                     sabpFound++
                     SabpImport.parsePosition(bytes)?.let { sp ->
                         sabpParsed++
+                        // L'index brut de Smart Player ne correspond pas forcément à l'ordre alphabétique
+                        // qu'on utilise : on retrouve le bon fichier par son nom (présent dans le .dat)
+                        // quand c'est possible, et on ne retombe sur l'index brut qu'en dernier recours.
+                        val byName = sp.fileName?.let { fn -> audio.indexOfFirst { it.name == fn } }?.takeIf { it >= 0 }
+                        val resolvedIndex = (byName ?: sp.queueIndex).coerceIn(0, audio.lastIndex)
                         val cur = load(path)
-                        val more = cur == null || sp.queueIndex > cur.index || (sp.queueIndex == cur.index && sp.fileMs > cur.pos)
-                        if (more) { save(path, sp.queueIndex.coerceIn(0, audio.lastIndex), sp.fileMs, sp.speed); sabpImported++ }
+                        val more = cur == null || resolvedIndex > cur.index || (resolvedIndex == cur.index && sp.fileMs > cur.pos)
+                        if (more) { save(path, resolvedIndex, sp.fileMs, sp.speed); sabpImported++ }
                         if (sp.finished) { setFinished(path, true); sabpFinished++ }
                     }
                 }

@@ -9,7 +9,9 @@ import java.io.InputStream
 /** Lit les fichiers laissés par Smart AudioBook Player pour reprendre l'historique. */
 object SabpImport {
 
-    data class SabpPos(val queueIndex: Int, val fileMs: Long, val speed: Float, val finished: Boolean)
+    // fileName (tiré du .dat lui-même) fait foi pour retrouver le bon fichier : l'index brut de Smart
+    // Player ne correspond pas forcément à l'ordre alphabétique qu'on utilise pour trier les fichiers.
+    data class SabpPos(val queueIndex: Int, val fileMs: Long, val speed: Float, val finished: Boolean, val fileName: String?)
 
     /**
      * position.sabp.dat : un objet Java sérialisé (classe BookDataBackup), un fichier par dossier de livre.
@@ -27,13 +29,53 @@ object SabpImport {
             fun i32(o: Int) = ((bytes[o].toInt() and 0xff) shl 24) or ((bytes[o + 1].toInt() and 0xff) shl 16) or
                 ((bytes[o + 2].toInt() and 0xff) shl 8) or (bytes[o + 3].toInt() and 0xff)
             val queuePos = i32(off)                 // mBookQueuePosition : quel fichier de la playlist
-            val filePos = i32(off + 12)              // mFilePosition : position en ms dans ce fichier
+            val filePos = i32(off + 12)              // mFilePosition : position EN SECONDES dans ce fichier
+            // (pas en millisecondes malgré la convention Android habituelle — vérifié contre l'appli réelle :
+            // une valeur de 468 correspond à "7:48" affiché dans Smart Player, soit 468 secondes).
             val speedBits = i32(off + 24)            // mPlaybackSpeed : float
             val speed = Float.fromBits(speedBits)
             // mBookState (enum) est sérialisé juste après, comme une chaîne UTF précédée de sa longueur
             // sur 2 octets : on cherche directement ce motif plutôt que de désérialiser l'enum en entier.
             val finished = indexOf(bytes, byteArrayOf(0x00, 0x08) + "Finished".toByteArray(), off) >= 0
-            return SabpPos(queuePos, filePos.toLong().coerceAtLeast(0), if (speed in 0.1f..5f) speed else 1f, finished)
+            val fileName = extractFileName(bytes, off + 45)
+            return SabpPos(queuePos, filePos.toLong().coerceAtLeast(0) * 1000, if (speed in 0.1f..5f) speed else 1f, finished, fileName)
+        } catch (e: Exception) { return null }
+    }
+
+    /**
+     * Après les 45 octets de champs primitifs viennent, dans l'ordre : mBookCreationTime (Date),
+     * mBookState (enum, chaîne), mCoverName (chaîne ou null), mEqualizerLevels (objet ou null),
+     * mFileName (chaîne ou null) — c'est ce dernier qu'on veut. On repère la fin du bloc Date+enum via
+     * le motif fixe "xpt" qui termine toujours la description de l'enum BookState, puis on avance champ
+     * par champ en ne sachant lire que deux cas : une chaîne (0x74 + longueur sur 2 octets + texte) ou
+     * un null (0x70). Dès qu'un champ ne correspond à aucun des deux, on abandonne proprement (position/
+     * vitesse restent valables, seul le nom de fichier manque).
+     */
+    private fun extractFileName(bytes: ByteArray, from: Int): String? {
+        try {
+            val enumEnd = indexOf(bytes, "xpt".toByteArray(), from)
+            if (enumEnd < 0) return null
+            var p = enumEnd + 3
+            fun readLen() = ((bytes[p].toInt() and 0xff) shl 8) or (bytes[p + 1].toInt() and 0xff)
+            // chaîne de l'état (ex. "Started", "Finished")
+            run { val len = readLen(); p += 2 + len }
+            // mCoverName
+            when (bytes[p].toInt() and 0xff) {
+                0x74 -> { p += 1; val len = readLen(); p += 2 + len }
+                0x70 -> p += 1
+                else -> return null
+            }
+            // mEqualizerLevels
+            when (bytes[p].toInt() and 0xff) {
+                0x74 -> { p += 1; val len = readLen(); p += 2 + len }
+                0x70 -> p += 1
+                else -> return null
+            }
+            // mFileName
+            return when (bytes[p].toInt() and 0xff) {
+                0x74 -> { p += 1; val len = readLen(); String(bytes, p + 2, len, Charsets.UTF_8) }
+                else -> null
+            }
         } catch (e: Exception) { return null }
     }
 
