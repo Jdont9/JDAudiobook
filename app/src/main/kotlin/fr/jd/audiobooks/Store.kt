@@ -10,7 +10,6 @@ import java.util.*
 // path : chemin relatif à la racine choisie (ex. "Millenium/Millenium 1 - ..."), identifiant stable du livre,
 // aligné sur le format utilisé par Smart AudioBook Player pour pouvoir croiser ses données.
 data class Book(val path: String, val name: String, val uris: List<String>, val names: List<String>, val cover: String? = null, val dir: String? = null)
-data class Mark(val index: Int, val pos: Long, val label: String)
 data class Saved(val index: Int, val pos: Long, val speed: Float, val updated: Long = 0L)
 data class Stat(val book: String, val day: String, val wall: Long, val content: Long)
 /** Avancement du scan pendant qu'il tourne : nombre de dossiers déjà explorés et de livres déjà trouvés. */
@@ -42,13 +41,11 @@ class Store(private val ctx: Context) {
         return true
     }
     /** L'ordre des fichiers d'un livre a changé (tri naturel, fichier ajouté/supprimé) : les index enregistrés
-     *  (position, signets) sont retrouvés par nom de fichier pour continuer à pointer sur les bons fichiers. */
+     *  (position) sont retrouvés par nom de fichier pour continuer à pointer sur les bons fichiers. */
     fun remapIndices(path: String, oldNames: List<String>, newNames: List<String>) {
         if (oldNames == newNames) return
         fun map(i: Int): Int? = oldNames.getOrNull(i)?.let { n -> newNames.indexOf(n) }?.takeIf { it >= 0 }
         load(path)?.let { s -> map(s.index)?.let { ni -> if (ni != s.index) save(path, ni, s.pos, s.speed, s.updated) } }
-        val ms = marks(path)
-        if (ms.isNotEmpty()) putMarks(path, ms.map { m -> m.copy(index = map(m.index) ?: m.index) })
     }
     fun hasSaved(path: String): Boolean = p.contains("s_$path")
     fun finished(path: String): Boolean = p.getBoolean("fin_$path", false)
@@ -72,14 +69,17 @@ class Store(private val ctx: Context) {
     fun flag(k: String, def: Boolean = false): Boolean = p.getBoolean("f_$k", def)
     fun setFlag(k: String, v: Boolean) = p.edit().putBoolean("f_$k", v).apply()
 
-    fun marks(path: String): List<Mark> {
-        val a = JSONArray(p.getString("b_$path", "[]"))
-        return (0 until a.length()).map { a.getJSONObject(it).let { o -> Mark(o.getInt("i"), o.getLong("p"), o.getString("l")) } }
+    /** Nettoyage unique des données des fonctions retirées (égaliseur, signets) dans les préférences. */
+    fun cleanupLegacy() {
+        if (p.getBoolean("cleanup_eq_marks", false)) return
+        val e = p.edit()
+        p.all.keys.filter { it == "eq_on" || it == "eq_levels" || it.startsWith("b_") }.forEach { e.remove(it) }
+        e.putBoolean("cleanup_eq_marks", true).apply()
     }
-    fun putMarks(path: String, l: List<Mark>) {
-        val a = JSONArray(); l.forEach { a.put(JSONObject().put("i", it.index).put("p", it.pos).put("l", it.label)) }
-        p.edit().putString("b_$path", a.toString()).apply()
-    }
+
+    // Gain de volume (dB) par livre
+    fun boost(path: String): Int = p.getInt("boost_$path", 0)
+    fun setBoost(path: String, db: Int) = p.edit().putInt("boost_$path", db).apply()
 
     // Statistiques : temps réel écouté et temps de contenu (tenant compte de la vitesse), par livre et par jour.
     // "t|" = mesuré en direct par l'appli ; "ti|" = importé depuis Smart AudioBook Player (granularité mensuelle,
@@ -111,10 +111,6 @@ class Store(private val ctx: Context) {
         Stat(r.substringBeforeLast('|'), r.substringAfterLast('|'), x[0].toLong(), x[1].toLong())
     }
 
-    fun eqEnabled(): Boolean = p.getBoolean("eq_on", false)
-    fun setEqEnabled(v: Boolean) = p.edit().putBoolean("eq_on", v).apply()
-    fun eqLevels(): List<Short>? = p.getString("eq_levels", null)?.split(",")?.map { it.toShort() }
-    fun setEqLevels(l: List<Short>) = p.edit().putString("eq_levels", l.joinToString(",")).apply()
 
     // ---- Cache de la bibliothèque : évite de tout re-scanner à chaque ouverture de l'appli.
     // Invalidé automatiquement si la racine change (clé incluant l'URI de la racine).

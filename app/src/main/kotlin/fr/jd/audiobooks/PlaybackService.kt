@@ -39,7 +39,7 @@ class PlaybackService : MediaLibraryService() {
             )
         }
     }
-    // Après un déplacement (curseur, chapitre, signet) : on attend que ça se stabilise avant d'écrire.
+    // Après un déplacement (curseur, chapitre) : on attend que ça se stabilise avant d'écrire.
     private val seekPersist = Runnable { persist(true) }
 
     companion object {
@@ -175,10 +175,12 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(30_000).setSeekForwardIncrementMs(30_000).build()
         p.addListener(object : Player.Listener {
-            override fun onAudioSessionIdChanged(sessionId: Int) { Eq.attach(sessionId, Store(this@PlaybackService)) }
+            override fun onAudioSessionIdChanged(sessionId: Int) { Boost.attach(sessionId) }
             override fun onEvents(pl: Player, e: Player.Events) { JdWidget.updateAll(this@PlaybackService) }
             // Retour arrière automatique à la reprise, proportionnel à la durée de pause
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Gain de volume réglé pour ce livre.
+                mediaItem?.mediaMetadata?.extras?.getString("path")?.let { Boost.set(store.boost(it)) }
                 // Changement de fichier en cours de lecture (pas le simple chargement d'une playlist).
                 if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) persist(true)
             }
@@ -224,6 +226,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         persist(true)
+        Boost.release()
         self = null
         h.removeCallbacksAndMessages(null)
         scope.cancel()

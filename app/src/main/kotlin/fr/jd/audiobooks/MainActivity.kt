@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 0)
         startService(Intent(this, PlaybackService::class.java))
         val store = Store(this)
+        Thread { store.cleanupLegacy() }.start() // supprime une fois les anciens réglages égaliseur/signets
         enableEdgeToEdge()
         setContent { JdTheme { Surface(Modifier.fillMaxSize()) { App(store) } } }
     }
@@ -68,7 +69,6 @@ fun App(store: Store) {
     var scanProgress by remember { mutableStateOf<ScanProgress?>(null) }
     var cur by remember { mutableStateOf<Book?>(null) }
     var showStats by remember { mutableStateOf(false) }
-    var showEq by remember { mutableStateOf(false) }
     var importMsg by remember { mutableStateOf<String?>(null) }
 
     suspend fun rescan() {
@@ -144,8 +144,7 @@ fun App(store: Store) {
     }
     val b = cur
     when {
-        showEq -> EqScreen(store) { showEq = false }
-        b != null -> PlayerScreen(b, store, { showEq = true }) { openJob?.cancel(); PlaybackService.player?.pause(); cur = null }
+        b != null -> PlayerScreen(b, store) { openJob?.cancel(); PlaybackService.player?.pause(); cur = null }
         showStats -> StatsScreen(store) { showStats = false }
         else -> Column {
             Surface(color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
@@ -244,10 +243,11 @@ fun App(store: Store) {
 }
 
 @Composable
-fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
+fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
     val ctx = LocalContext.current
     var tick by remember { mutableStateOf(0) }
-    var marks by remember { mutableStateOf(store.marks(bk.path)) }
+    var boost by remember { mutableStateOf(store.boost(bk.path)) }
+    var boostMenu by remember { mutableStateOf(false) }
     var chaps by remember { mutableStateOf(listOf<Chap>()) }
     var speedMenu by remember { mutableStateOf(false) }
     var sleepMenu by remember { mutableStateOf(false) }
@@ -332,9 +332,9 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
     val before = durs.take(fi)
     val elapsed = if (before.all { it > 0 }) before.sum() + p.currentPosition else -1L
     val btnPad = PaddingValues(horizontal = 8.dp)
-    // Mise en page : barre du haut + liste défilante (pochette, chapitres, signets) + panneau de commandes FIXE en bas.
+    // Mise en page : barre du haut + liste défilante (pochette, chapitres) + panneau de commandes FIXE en bas.
     // Avant, tout était dans une colonne non défilante sans marge pour la barre de navigation : sur un écran
-    // un peu petit, les boutons du bas (dont « + Signet ») étaient poussés hors de l'écran ou sous la barre système.
+    // un peu petit, les boutons du bas étaient poussés hors de l'écran ou sous la barre système.
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextButton(back) { Text("← Bibliothèque") }
@@ -343,10 +343,10 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                 Text(if (finished) "✓ Lu" else "Marquer comme lu")
             }
         }
-        // La pochette s'adapte à la place disponible : grande quand il n'y a ni chapitres ni signets (plus de grand vide),
+        // La pochette s'adapte à la place disponible : grande quand il n y a pas de chapitres (plus de grand vide),
         // plus petite sinon pour laisser voir la liste.
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-        val busy = chaps.isNotEmpty() || marks.isNotEmpty()
+        val busy = chaps.isNotEmpty()
         val coverSize = (if (busy) minOf(maxWidth * 0.6f, maxHeight * 0.4f) else minOf(maxWidth, maxHeight - 130.dp)).coerceIn(120.dp, 400.dp)
         LazyColumn(Modifier.fillMaxSize()) {
             item {
@@ -363,18 +363,6 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                         "${fmt(c.startMs)}  ${c.title}",
                         Modifier.fillMaxWidth().clickable { p.seekTo(c.startMs) }.padding(vertical = 8.dp),
                         color = if (i == ci) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                }
-            }
-            item { Text("Signets (${marks.size})", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
-            if (marks.isEmpty()) item {
-                Text("Aucun signet. Appuie sur « + Signet » pour marquer la position actuelle.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 4.dp))
-            }
-            items(marks.sortedWith(compareBy<Mark>({ it.index }, { it.pos }))) { m ->
-                Row(Modifier.fillMaxWidth().clickable { p.seekTo(m.index.coerceIn(0, bk.uris.lastIndex), m.pos) }, verticalAlignment = Alignment.CenterVertically) {
-                    Text(m.label, Modifier.weight(1f).padding(vertical = 8.dp))
-                    TextButton({ marks = marks - m; store.putMarks(bk.path, marks) }) { Text("✕") }
                 }
             }
         }
@@ -432,14 +420,18 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                 FilterChip(skipSilence, { skipSilence = !skipSilence; p.skipSilenceEnabled = skipSilence }, { Text("Silences") }, Modifier.weight(1f))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                FilledTonalButton({
-                    val i = p.currentMediaItemIndex.coerceIn(0, bk.uris.lastIndex)
-                    val pos = p.currentPosition
-                    marks = marks + Mark(i, pos, "${bk.names[i]} ${fmt(pos)}")
-                    store.putMarks(bk.path, marks)
-                    android.widget.Toast.makeText(ctx, "Signet ajouté : ${fmt(pos)}", android.widget.Toast.LENGTH_SHORT).show()
-                }, Modifier.weight(1f), contentPadding = btnPad) { Text("+ Signet") }
-                OutlinedButton(openEq, Modifier.weight(1f), contentPadding = btnPad) { Text("Égaliseur") }
+                Box(Modifier.weight(1f)) {
+                    OutlinedButton({ boostMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) {
+                        Text(if (boost > 0) "Volume +$boost dB" else "Volume +0 dB")
+                    }
+                    DropdownMenu(boostMenu, { boostMenu = false }) {
+                        Boost.levels.forEach { db ->
+                            DropdownMenuItem({ Text(if (db == 0) "Normal" else "+$db dB") }, {
+                                boost = db; Boost.set(db); store.setBoost(bk.path, db); boostMenu = false
+                            })
+                        }
+                    }
+                }
             }
         }
     }
@@ -481,41 +473,3 @@ fun StatsScreen(store: Store, back: () -> Unit) {
 }
 
 
-@Composable
-fun EqScreen(store: Store, back: () -> Unit) {
-    var enabled by remember { mutableStateOf(store.eqEnabled()) }
-    var tick by remember { mutableStateOf(0) }
-    val bands = remember { Eq.bands() }
-    Column(Modifier.padding(16.dp).statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(back) { Text("← Lecteur") }
-        Text("Égaliseur", style = MaterialTheme.typography.headlineSmall)
-        if (bands.isEmpty()) {
-            Text("Égaliseur indisponible sur cet appareil ou tant que rien n'est lu.")
-            return
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Activer", Modifier.weight(1f))
-            Switch(enabled, { enabled = it; Eq.setEnabled(it); store.setEqEnabled(it) })
-        }
-        val presets = remember { Eq.presets() }
-        if (presets.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            itemsIndexed(presets) { i, name ->
-                OutlinedButton({ Eq.usePreset(i.toShort()); store.setEqLevels(Eq.snapshot()); tick++ }) { Text(name) }
-            }
-        }
-        tick.let { }
-        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            bands.forEach { (b, lo, hi) ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxHeight()) {
-                    Text("${Eq.level(b) / 100}dB", style = MaterialTheme.typography.labelSmall)
-                    Slider(
-                        value = Eq.level(b).toFloat(),
-                        onValueChange = { v -> Eq.setLevel(b, v.toInt().toShort()); store.setEqLevels(Eq.snapshot()); tick++ },
-                        valueRange = lo.toFloat()..hi.toFloat(),
-                        modifier = Modifier.graphicsLayer { rotationZ = 270f }.width(140.dp))
-                    Text("${Eq.freq(b)}Hz", style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-    }
-}

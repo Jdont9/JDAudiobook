@@ -10,4 +10,7 @@ Push sur GitHub : le workflow Actions (`.github/workflows/build.yml`) compile l'
 ## Sauvegarde de la progression (service)
 - La progression est sauvegardée par `PlaybackService` (donc même sans écran lecteur ouvert, ou depuis Android Auto) : position toutes les 5 s en lecture, `position.jd.json` + statistiques toutes les 20 s, et à chaque pause, changement de fichier, déplacement, fermeture de la tâche ou arrêt du service.
 - Le cache de la bibliothèque est dans son propre fichier de préférences (`lib`), les statistiques sont cumulées en mémoire puis écrites par paquets.
-- Les fichiers d'un livre sont triés en ordre « naturel » (2 avant 10). Au rescan, position et signets sont recalés par nom de fichier si l'ordre a changé.
+- Les fichiers d'un livre sont triés en ordre « naturel » (2 avant 10). Au rescan, la position est recalée par nom de fichier si l'ordre a changé.
+
+## Volume
+Le bouton « Volume » du lecteur ajoute un gain de 3 à 12 dB (LoudnessEnhancer), mémorisé par livre. Les signets et l'égaliseur ont été retirés.
