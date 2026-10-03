@@ -37,6 +37,13 @@ fun naturalCompare(a: String, b: String): Int {
     return (a.length - i) - (b.length - j)
 }
 
+/** Ordre des fichiers d'un livre : on compare les noms SANS extension (sinon « Complet.opus » passait après
+ *  « Complet 2.opus » parce que « . » vient après l'espace), en ordre naturel (2 avant 10). */
+fun fileOrder(a: String, b: String): Int {
+    val c = naturalCompare(a.substringBeforeLast('.').lowercase(), b.substringBeforeLast('.').lowercase())
+    return if (c != 0) c else naturalCompare(a.lowercase(), b.lowercase())
+}
+
 /** Retire le préfixe commun à tous les noms (sans jamais couper un mot ou un nombre) pour que la liste soit lisible. */
 fun shortNames(names: List<String>): Pair<String, List<String>> {
     if (names.size < 2) return "" to names
@@ -58,8 +65,7 @@ fun FilePickerDialog(bk: Book, durs: List<Long>, current: Int, store: Store, onP
     val (prefix, shorts) = remember(bk.path) { shortNames(bk.names) }
     // Ordre alphabétique de la liste vs ordre numérique : si ça diffère, l'ordre de lecture est probablement faux.
     val orderOk = remember(bk.path) {
-        val low = bk.names.map { it.lowercase() }
-        low == low.sortedWith(Comparator { a, b -> naturalCompare(a, b) })
+        bk.names == bk.names.sortedWith(Comparator { a, b -> fileOrder(a, b) })
     }
     // Position de départ de chaque fichier dans le livre (connue seulement si tous les fichiers précédents le sont).
     val starts = remember(durs) {

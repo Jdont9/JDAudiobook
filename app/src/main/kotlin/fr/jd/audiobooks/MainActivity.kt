@@ -343,10 +343,15 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                 Text(if (finished) "✓ Lu" else "Marquer comme lu")
             }
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+        // La pochette s'adapte à la place disponible : grande quand il n'y a ni chapitres ni signets (plus de grand vide),
+        // plus petite sinon pour laisser voir la liste.
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        val busy = chaps.isNotEmpty() || marks.isNotEmpty()
+        val coverSize = (if (busy) minOf(maxWidth * 0.6f, maxHeight * 0.4f) else minOf(maxWidth, maxHeight - 130.dp)).coerceIn(120.dp, 400.dp)
+        LazyColumn(Modifier.fillMaxSize()) {
             item {
                 Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Cover(bk, 140.dp)
+                    Cover(bk, coverSize)
                     Spacer(Modifier.height(8.dp))
                     Text(bk.name, style = MaterialTheme.typography.titleLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
@@ -372,6 +377,7 @@ fun PlayerScreen(bk: Book, store: Store, openEq: () -> Unit, back: () -> Unit) {
                     TextButton({ marks = marks - m; store.putMarks(bk.path, marks) }) { Text("✕") }
                 }
             }
+        }
         }
         HorizontalDivider()
         Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {

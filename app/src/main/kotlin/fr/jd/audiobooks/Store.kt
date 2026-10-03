@@ -227,7 +227,7 @@ class Store(private val ctx: Context) {
             folders++
             val kids = children(dirId)
             val files = kids.filter { !it.isDir }
-            val audio = files.filter { ext(it.name) in ext }.sortedWith(Comparator { a, b -> naturalCompare(a.name.lowercase(), b.name.lowercase()) })
+            val audio = files.filter { ext(it.name) in ext }.sortedWith(Comparator { a, b -> fileOrder(a.name, b.name) })
             if (audio.isNotEmpty()) {
                 val im = files.filter { ext(it.name) in img }
                 val cv = (im.firstOrNull { f -> listOf("cover", "folder", "front").any { f.name.lowercase().contains(it) } } ?: im.firstOrNull())
