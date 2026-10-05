@@ -152,11 +152,10 @@ fun App(store: Store) {
             }
             Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
-                val btnPad = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                TextButton({ showStats = true }, contentPadding = btnPad) { Text("Stats", style = MaterialTheme.typography.labelMedium) }
-                TextButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }, contentPadding = btnPad) { Text("Importer", style = MaterialTheme.typography.labelMedium) }
-                OutlinedButton({ picker.launch(null) }, contentPadding = btnPad) { Text("Dossier", style = MaterialTheme.typography.labelMedium) }
-                TextButton({ scope.launch { rescan() } }, enabled = scanProgress == null, contentPadding = btnPad) { Text("Rescan", style = MaterialTheme.typography.labelMedium) }
+                IconButton({ showStats = true }) { Icon(JdIcons.BarChart, contentDescription = "Statistiques") }
+                IconButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }) { Icon(JdIcons.Download, contentDescription = "Importer des statistiques") }
+                IconButton({ picker.launch(null) }) { Icon(JdIcons.Folder, contentDescription = "Choisir le dossier des livres") }
+                IconButton({ scope.launch { rescan() } }, enabled = scanProgress == null) { Icon(JdIcons.Refresh, contentDescription = "Actualiser la bibliothèque") }
             }
             scanProgress?.let { sp ->
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -169,7 +168,7 @@ fun App(store: Store) {
             }
             if (store.root != null && !ProgressFile.canWrite(ctx, store.root)) {
                 Text(
-                    "Écriture non autorisée sur ce dossier : appuie sur « Dossier » et choisis-le à nouveau pour enregistrer la progression à côté des fichiers audio.",
+                    "Écriture non autorisée sur ce dossier : appuie sur l'icône dossier et choisis-le à nouveau pour enregistrer la progression à côté des fichiers audio.",
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
                 )
             }
@@ -177,10 +176,10 @@ fun App(store: Store) {
                 Text(it, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             if (books.isEmpty() && scanProgress == null && store.root != null) {
-                Text("Aucun livre en cache — appuie sur « Rescan ».", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                Text("Aucun livre en cache — appuie sur l'icône d'actualisation ↻.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
             }
             if (store.root == null) {
-                Text("Choisis un dossier pour commencer.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                Text("Choisis un dossier (icône dossier en haut) pour commencer.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
             }
 
             val tabs = listOf("TOUS", "NOUVEAUX", "EN COURS", "LUS")
@@ -311,7 +310,7 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
     val p = PlaybackService.player
     if (!loaded || p == null) {
         Column(Modifier.fillMaxSize().padding(16.dp).statusBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
-            TextButton(back, Modifier.align(Alignment.Start)) { Text("← Bibliothèque") }
+            BackButton(back, Modifier.align(Alignment.Start))
             Spacer(Modifier.weight(1f))
             Cover(bk, 160.dp)
             Spacer(Modifier.height(16.dp))
@@ -337,10 +336,18 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
     // un peu petit, les boutons du bas étaient poussés hors de l'écran ou sous la barre système.
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(back) { Text("← Bibliothèque") }
+            BackButton(back)
             Spacer(Modifier.weight(1f))
-            TextButton({ finished = !finished; store.setFinished(bk.path, finished); PlaybackService.saveNow() }) {
-                Text(if (finished) "✓ Lu" else "Marquer comme lu")
+            IconButton(
+                { finished = !finished; store.setFinished(bk.path, finished); PlaybackService.saveNow() },
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = if (finished) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent
+                )
+            ) {
+                Icon(
+                    JdIcons.Check, contentDescription = if (finished) "Lu (appuie pour annuler)" else "Marquer comme lu",
+                    tint = if (finished) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         // La pochette s'adapte à la place disponible : grande quand il n y a pas de chapitres (plus de grand vide),
@@ -371,7 +378,7 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(Modifier.fillMaxWidth().clickable { showFiles = true }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(bk.names.getOrElse(fi) { "" } + "  (${fi + 1}/${bk.uris.size})", Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text("▾", style = MaterialTheme.typography.titleMedium)
+                Icon(JdIcons.ArrowDropDown, contentDescription = "Choisir un fichier")
             }
             if (showFiles) FilePickerDialog(bk, durs, fi, store, onPick = { p.seekTo(it, 0); showFiles = false }, onDismiss = { showFiles = false })
             if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
@@ -388,21 +395,34 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton({
+                IconButton({
                     if (chaps.isEmpty()) p.seekToPreviousMediaItem()
                     else p.seekTo(if (p.currentPosition - chaps[ci].startMs > 3000) chaps[ci].startMs else chaps.getOrNull(ci - 1)?.startMs ?: 0)
-                }, contentPadding = btnPad) { Text("⏮") }
-                OutlinedButton({ p.seekBack() }, contentPadding = btnPad) { Text("-30") }
-                Button({ if (playing) p.pause() else p.play() }) { Text(if (playing) "Pause" else "Lire") }
-                OutlinedButton({ p.seekForward() }, contentPadding = btnPad) { Text("+30") }
-                OutlinedButton({
+                }) { Icon(JdIcons.SkipPrevious, contentDescription = "Précédent", Modifier.size(28.dp)) }
+                IconButton({ p.seekBack() }) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(JdIcons.Replay, contentDescription = "Reculer de 30 secondes", Modifier.size(34.dp))
+                        Text("30", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
+                    }
+                }
+                FilledIconButton({ if (playing) p.pause() else p.play() }, Modifier.size(64.dp)) {
+                    Icon(if (playing) JdIcons.Pause else JdIcons.Play, contentDescription = if (playing) "Pause" else "Lire", Modifier.size(36.dp))
+                }
+                IconButton({ p.seekForward() }) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(JdIcons.Replay, contentDescription = "Avancer de 30 secondes", Modifier.size(34.dp).graphicsLayer { scaleX = -1f })
+                        Text("30", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
+                    }
+                }
+                IconButton({
                     val n = chaps.getOrNull(ci + 1)
                     if (n != null) p.seekTo(n.startMs) else p.seekToNextMediaItem()
-                }, contentPadding = btnPad) { Text("⏭") }
+                }) { Icon(JdIcons.SkipNext, contentDescription = "Suivant", Modifier.size(28.dp)) }
             }
+            // Réglages : vitesse, minuterie de sommeil, saut des silences, volume (une seule rangée d'icônes)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
-                    OutlinedButton({ speedMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { Text("×${p.playbackParameters.speed}") }
+                    OutlinedButton({ speedMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { Text("×${p.playbackParameters.speed}", maxLines = 1) }
                     DropdownMenu(speedMenu, { speedMenu = false }) {
                         listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f).forEach { s ->
                             DropdownMenuItem({ Text("×$s") }, { p.setPlaybackSpeed(s); speedMenu = false })
@@ -410,20 +430,30 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                     }
                 }
                 Box(Modifier.weight(1f)) {
-                    OutlinedButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { Text(if (left > 0) fmt(left) else "Sommeil", maxLines = 1) }
+                    val sleepBtn: @Composable () -> Unit = {
+                        Icon(JdIcons.Moon, contentDescription = "Minuterie de sommeil", Modifier.size(20.dp))
+                        if (left > 0) Text(fmt(left), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (left > 0) FilledTonalButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
+                    else OutlinedButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
                     DropdownMenu(sleepMenu, { sleepMenu = false }) {
                         listOf(0, 10, 15, 30, 45, 60, 90).forEach { m ->
                             DropdownMenuItem({ Text(if (m == 0) "Désactivé" else "$m min") }, { Sleep.set(m); sleepMenu = false })
                         }
                     }
                 }
-                FilterChip(skipSilence, { skipSilence = !skipSilence; p.skipSilenceEnabled = skipSilence }, { Text("Silences") }, Modifier.weight(1f))
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    skipSilence, { skipSilence = !skipSilence; p.skipSilenceEnabled = skipSilence },
+                    { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Icon(JdIcons.GraphicEq, contentDescription = "Passer les silences", Modifier.size(20.dp)) } },
+                    Modifier.weight(1f)
+                )
                 Box(Modifier.weight(1f)) {
-                    OutlinedButton({ boostMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) {
-                        Text(if (boost > 0) "Volume +$boost dB" else "Volume +0 dB")
+                    val volBtn: @Composable () -> Unit = {
+                        Icon(JdIcons.VolumeUp, contentDescription = "Gain de volume", Modifier.size(20.dp))
+                        if (boost > 0) Text("+$boost", Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
                     }
+                    if (boost > 0) FilledTonalButton({ boostMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { volBtn() }
+                    else OutlinedButton({ boostMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { volBtn() }
                     DropdownMenu(boostMenu, { boostMenu = false }) {
                         Boost.levels.forEach { db ->
                             DropdownMenuItem({ Text(if (db == 0) "Normal" else "+$db dB") }, {
@@ -448,7 +478,7 @@ fun StatsScreen(store: Store, back: () -> Unit) {
     val wall = st.sumOf { it.wall }
     val content = st.sumOf { it.content }
     Column(Modifier.padding(16.dp).statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        TextButton(back) { Text("← Bibliothèque") }
+        BackButton(back)
         Text("Statistiques", style = MaterialTheme.typography.headlineSmall)
         Text("Aujourd'hui : ${fmt(st.filter { it.day == today }.sumOf { it.wall })}")
         Text("Total écouté : ${fmt(wall)}")
