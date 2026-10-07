@@ -20,6 +20,7 @@ Le bouton « Volume » du lecteur ajoute un gain de 3 à 12 dB (LoudnessEnhancer
 - Le bouton retour de l'appli, le geste ou la touche retour du système renvoient à la bibliothèque : la lecture continue et l'appli n'est pas fermée. Le ✕ du mini-lecteur met en pause et ferme le lecteur. Même comportement depuis l'écran Statistiques.
 
 ## Pochettes manquantes
-- Icône image dans la bibliothèque : analyse les livres sans pochette (ni image dans le dossier, ni pochette intégrée), puis cherche sur Internet (iTunes livres audio → Google Books → Open Library) d'après le nom du dossier (avec le dossier parent en 2e essai). Un résultat n'est gardé que si son titre ressemble assez au nom du livre.
+- Icône image dans la bibliothèque : analyse les livres sans pochette (ni image dans le dossier, ni pochette intégrée), puis cherche sur Internet (iTunes livres audio → Audible FR → Audiolib → Audible US → Google Books → Open Library) d'après le nom du dossier (avec le dossier parent en 2e essai). Un résultat n'est gardé que si son titre ressemble assez au nom du livre.
+- Pour un livre « introuvable », le bouton **Lien** du journal permet de coller l'adresse d'une page du livre (Audiolib, Audible, Babelio…) ou d'une image : l'appli en récupère la pochette (balise `og:image`). Audiolib est interrogé via l'API de recherche du site (api.hachette.fr, non officielle : elle peut changer).
 - L'image est enregistrée en `cover.jpg` dans le dossier du livre (nécessite l'écriture sur le dossier racine) et aussi dans le stockage de l'appli ; si l'écriture dans le dossier échoue, la copie de l'appli sert de secours.
 - Nécessite la permission Internet (ajoutée au manifeste).
