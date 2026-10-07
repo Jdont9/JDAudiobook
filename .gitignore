@@ -1,0 +1,13 @@
+# Build
+build/
+.gradle/
+.idea/
+*.iml
+local.properties
+.kotlin/
+captures/
+
+# Clés de signature : ne JAMAIS les committer
+*.jks
+*.keystore
+keystore.properties

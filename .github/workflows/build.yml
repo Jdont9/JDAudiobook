@@ -1,11 +1,23 @@
 name: Build APK
+
+# - Chaque push : APK debug (non signé par une vraie clé) en artefact.
+# - Si les secrets de signature existent : APK release signé en artefact.
+# - Tag vX.Y.Z : APK release signé publié dans une Release GitHub (voir RELEASING.md).
 on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write   # nécessaire pour créer la Release sur un tag
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -18,20 +30,8 @@ jobs:
       - name: Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # Par défaut cette action installe aussi le paquet "tools" (l'ancien Android SDK
-          # Tools), retiré depuis longtemps des dépôts Google, ce qui fait échouer l'étape.
-          # Gradle/AGP installe de toute façon platform/build-tools tout seul au premier build.
+          # Évite l'installation du paquet "tools" obsolète ; AGP installe le reste au premier build.
           packages: platform-tools
-
-      # Le dépôt ne contient pas encore gradlew (son .jar est un binaire téléchargé,
-      # impossible à committer à l'aveugle) : on le génère ici avec le Gradle système
-      # du runner, une fois, pinné sur une version fixe. Les builds suivants utilisent
-      # ensuite ./gradlew, indépendamment de la version de Gradle installée sur la machine.
-      - name: Generate Gradle wrapper
-        run: |
-          if [ ! -f ./gradlew ]; then
-            gradle wrapper --gradle-version 8.9 --distribution-type bin
-          fi
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -41,26 +41,65 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
 
+      - name: Vérifier que le tag correspond à versionName
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          if [ "v$v" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Le tag ${GITHUB_REF_NAME} ne correspond pas à versionName v$v (app/build.gradle.kts)"
+            exit 1
+          fi
+
+      - name: Exiger la clé de signature pour une release
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 == ''
+        run: |
+          echo "::error::Secrets de signature absents (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD). Voir RELEASING.md."
+          exit 1
+
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 
-      - name: Upload APK
+      - name: Upload APK debug
         uses: actions/upload-artifact@v4
         with:
           name: audiobooks-debug
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      # Le wrapper généré (gradlew, gradlew.bat, gradle-wrapper.jar/.properties) est publié
-      # ici pour que tu puisses le récupérer une fois et le committer dans le dépôt : les
-      # prochains runs le trouveront déjà présent et sauteront l'étape de génération.
-      - name: Upload generated wrapper (à committer une fois)
+      - name: Préparer la clé de signature
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build release APK (signé)
+        if: env.KEYSTORE_BASE64 != ''
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Renommer et vérifier la signature
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          version=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/JDAudiobook-${version}.apk"
+          apksigner=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}" -name apksigner -type f 2>/dev/null | sort -V | tail -1)
+          if [ -n "$apksigner" ]; then
+            "$apksigner" verify --verbose --print-certs "dist/JDAudiobook-${version}.apk"
+          else
+            echo "::warning::apksigner introuvable, vérification de la signature ignorée"
+          fi
+
+      - name: Upload APK release
+        if: env.KEYSTORE_BASE64 != ''
         uses: actions/upload-artifact@v4
         with:
-          name: gradle-wrapper
-          path: |
-            gradlew
-            gradlew.bat
-            gradle/wrapper/gradle-wrapper.jar
-            gradle/wrapper/gradle-wrapper.properties
-          retention-days: 30
+          name: audiobooks-release
+          path: dist/*.apk
+          retention-days: 90
+
+      - name: Publier la Release GitHub
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
