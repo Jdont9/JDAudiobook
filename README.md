@@ -14,3 +14,12 @@ Push sur GitHub : le workflow Actions (`.github/workflows/build.yml`) compile l'
 
 ## Volume
 Le bouton « Volume » du lecteur ajoute un gain de 3 à 12 dB (LoudnessEnhancer), mémorisé par livre. Les signets et l'égaliseur ont été retirés.
+
+## Mini-lecteur et navigation
+- Quand un livre est chargé, un mini-lecteur (pochette, titre, recul 30 s, lecture/pause, fermer ✕) s'affiche en bas de la bibliothèque ; un appui dessus rouvre le lecteur sans rien recharger.
+- Le bouton retour de l'appli, le geste ou la touche retour du système renvoient à la bibliothèque : la lecture continue et l'appli n'est pas fermée. Le ✕ du mini-lecteur met en pause et ferme le lecteur. Même comportement depuis l'écran Statistiques.
+
+## Pochettes manquantes
+- Icône image dans la bibliothèque : analyse les livres sans pochette (ni image dans le dossier, ni pochette intégrée), puis cherche sur Internet (iTunes livres audio → Google Books → Open Library) d'après le nom du dossier (avec le dossier parent en 2e essai). Un résultat n'est gardé que si son titre ressemble assez au nom du livre.
+- L'image est enregistrée en `cover.jpg` dans le dossier du livre (nécessite l'écriture sur le dossier racine) et aussi dans le stockage de l'appli ; si l'écriture dans le dossier échoue, la copie de l'appli sert de secours.
+- Nécessite la permission Internet (ajoutée au manifeste).

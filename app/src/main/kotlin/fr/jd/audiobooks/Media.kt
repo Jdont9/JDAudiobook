@@ -5,6 +5,8 @@ import android.graphics.*
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
@@ -140,21 +142,41 @@ object Durations {
     } catch (e: Exception) { -1L }
 }
 
-/** Pochette : image du dossier (cover/folder/front) sinon image intégrée au premier fichier. */
+/** Pochette : image du dossier (cover/folder/front), sinon image intégrée au premier fichier,
+ *  sinon pochette téléchargée et gardée dans le stockage de l'appli. */
 object Covers {
     private val cache = LruCache<String, Bitmap>(16)
+    /** Incrémenté quand une pochette change : les écrans qui l'affichent se rechargent. */
+    var version by androidx.compose.runtime.mutableStateOf(0)
+
+    fun localFile(ctx: Context, path: String): java.io.File =
+        java.io.File(java.io.File(ctx.filesDir, "covers").also { it.mkdirs() }, Integer.toHexString(path.hashCode()) + ".jpg")
+
+    fun invalidate(path: String) { cache.remove(path); version++ }
 
     suspend fun get(ctx: Context, bk: Book): Bitmap? = withContext(Dispatchers.IO) {
         cache.get(bk.path) ?: load(ctx, bk)?.also { cache.put(bk.path, it) }
     }
 
+    /** Vrai si le livre a déjà une pochette quelque part (dossier, fichier audio ou téléchargée). */
+    fun hasCover(ctx: Context, bk: Book): Boolean {
+        if (bk.cover != null || localFile(ctx, bk.path).exists()) return true
+        return try {
+            MediaMetadataRetriever().run {
+                try { setDataSource(ctx, Uri.parse(bk.uris[0])); embeddedPicture != null } finally { release() }
+            }
+        } catch (e: Exception) { false }
+    }
+
     private fun load(ctx: Context, bk: Book): Bitmap? {
-        val data: ByteArray = try {
+        var data: ByteArray? = try {
             bk.cover?.let { c -> ctx.contentResolver.openInputStream(Uri.parse(c))?.use { it.readBytes() } }
                 ?: MediaMetadataRetriever().run {
                     try { setDataSource(ctx, Uri.parse(bk.uris[0])); embeddedPicture } finally { release() }
                 }
-        } catch (e: Exception) { null } ?: return null
+        } catch (e: Exception) { null }
+        if (data == null) data = localFile(ctx, bk.path).takeIf { it.exists() }?.let { try { it.readBytes() } catch (e: Exception) { null } }
+        if (data == null) return null
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, o)
         var s = 1

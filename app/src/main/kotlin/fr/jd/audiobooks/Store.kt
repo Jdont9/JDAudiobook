@@ -152,6 +152,12 @@ class Store(private val ctx: Context) {
         p.edit().remove(cacheKey()).apply()
     }
 
+    /** Mémorise une pochette (re)trouvée pour un livre dans le cache de la bibliothèque. */
+    fun updateCover(path: String, uri: String) {
+        val l = cachedBooks() ?: return
+        cacheBooks(l.map { if (it.path == path) it.copy(cover = uri) else it })
+    }
+
     /** Bibliothèque pour le service (Android Auto, notifications…) : le cache d'abord, un scan complet
      *  seulement s'il n'y en a pas encore. Avant, chaque requête d'un client média relançait un scan SAF
      *  complet en tâche de fond, en concurrence avec l'ouverture du livre dans l'appli. */

@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun Cover(bk: Book, size: Dp) {
     val ctx = LocalContext.current
-    val bmp by produceState<Bitmap?>(null, bk.path) { value = Covers.get(ctx, bk) }
+    val bmp by produceState<Bitmap?>(null, bk.path, bk.cover, Covers.version) { value = Covers.get(ctx, bk) }
     Box(Modifier.size(size).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
         bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
     }
@@ -69,6 +69,8 @@ fun App(store: Store) {
     var scanProgress by remember { mutableStateOf<ScanProgress?>(null) }
     var cur by remember { mutableStateOf<Book?>(null) }
     var showStats by remember { mutableStateOf(false) }
+    var showPlayer by remember { mutableStateOf(false) }
+    var showCovers by remember { mutableStateOf(false) }
     var importMsg by remember { mutableStateOf<String?>(null) }
 
     suspend fun rescan() {
@@ -102,6 +104,7 @@ fun App(store: Store) {
     var openJob by remember { mutableStateOf<Job?>(null) }
     fun open(bk: Book) {
         cur = bk
+        showPlayer = true
         openJob?.cancel()
         openJob = scope.launch {
             var waited = 0
@@ -142,9 +145,23 @@ fun App(store: Store) {
             p.prepare()
         }
     }
+    // Afficher un livre : si le lecteur le contient déjà (mini-lecteur, livre en cours), on rouvre l'écran
+    // sans rien recharger ; sinon on le charge.
+    fun show(bk: Book) {
+        if (isLoaded(PlaybackService.player, bk)) { cur = bk; showPlayer = true } else open(bk)
+    }
+    // Retour vers la bibliothèque : la lecture continue (mini-lecteur). Si le livre n'est pas encore chargé, on annule l'ouverture.
+    fun leavePlayer() {
+        val c = cur
+        if (c != null && isLoaded(PlaybackService.player, c)) PlaybackService.saveNow()
+        else { openJob?.cancel(); PlaybackService.player?.pause(); cur = null }
+        showPlayer = false
+    }
+    // Geste / bouton retour du système : revient à la bibliothèque au lieu de fermer l'appli.
+    BackHandler(enabled = showPlayer || showStats) { if (showPlayer) leavePlayer() else showStats = false }
     val b = cur
     when {
-        b != null -> PlayerScreen(b, store) { openJob?.cancel(); PlaybackService.player?.pause(); cur = null }
+        b != null && showPlayer -> PlayerScreen(b, store) { leavePlayer() }
         showStats -> StatsScreen(store) { showStats = false }
         else -> Column {
             Surface(color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
@@ -153,6 +170,7 @@ fun App(store: Store) {
             Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
                 IconButton({ showStats = true }) { Icon(JdIcons.BarChart, contentDescription = "Statistiques") }
+                IconButton({ showCovers = true }, enabled = books.isNotEmpty()) { Icon(JdIcons.Image, contentDescription = "Rechercher les pochettes manquantes") }
                 IconButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }) { Icon(JdIcons.Download, contentDescription = "Importer des statistiques") }
                 IconButton({ picker.launch(null) }) { Icon(JdIcons.Folder, contentDescription = "Choisir le dossier des livres") }
                 IconButton({ scope.launch { rescan() } }, enabled = scanProgress == null) { Icon(JdIcons.Refresh, contentDescription = "Actualiser la bibliothèque") }
@@ -197,13 +215,13 @@ fun App(store: Store) {
                     }
                 }
             }
-            LazyColumn {
+            LazyColumn(Modifier.weight(1f)) {
                 items(shown, key = { it.path }) { bk ->
                     val s = store.load(bk.path)
                     val finished = store.finished(bk.path)
                     val total = remember(bk.path) { store.durations(bk).takeIf { d -> d.all { it > 0 } }?.sum() }
                     Row(
-                        Modifier.fillMaxWidth().clickable { open(bk) }.padding(horizontal = 12.dp, vertical = 10.dp),
+                        Modifier.fillMaxWidth().clickable { show(bk) }.padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.Top
                     ) {
                         Box(Modifier.width(84.dp)) {
@@ -236,6 +254,53 @@ fun App(store: Store) {
                     }
                     HorizontalDivider()
                 }
+            }
+            MiniPlayer(books, onOpen = { show(it) }, onClose = {
+                PlaybackService.player?.let { pl -> pl.pause(); PlaybackService.saveNow(); pl.clearMediaItems() }
+                cur = null
+            })
+            if (showCovers) MissingCoversDialog(books, store, onCover = { path, uri ->
+                if (uri != null) books = books.map { if (it.path == path) it.copy(cover = uri) else it }
+            }, onDismiss = { showCovers = false })
+        }
+    }
+}
+
+/** Mini-lecteur affiché en bas de la bibliothèque dès qu'un livre est chargé dans le lecteur. */
+@Composable
+fun MiniPlayer(books: List<Book>, onOpen: (Book) -> Unit, onClose: () -> Unit) {
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { delay(500); tick++ } }
+    tick.let { }
+    val p = PlaybackService.player ?: return
+    if (p.mediaItemCount == 0) return
+    val path = p.currentMediaItem?.mediaMetadata?.extras?.getString("path") ?: return
+    val bk = books.firstOrNull { it.path == path } ?: return
+    val playing = p.playWhenReady
+    val dur = p.duration.takeIf { it > 0 } ?: 1L
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.navigationBarsPadding()) {
+            LinearProgressIndicator(progress = { (p.currentPosition.toFloat() / dur).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(2.dp))
+            Row(Modifier.fillMaxWidth().clickable { onOpen(bk) }.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Cover(bk, 48.dp)
+                Column(Modifier.padding(horizontal = 12.dp).weight(1f)) {
+                    Text(bk.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "${bk.names.getOrElse(p.currentMediaItemIndex) { "" }} · ${fmt(p.currentPosition)}",
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton({ p.seekBack() }) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(JdIcons.Replay, contentDescription = "Reculer de 30 secondes", Modifier.size(28.dp))
+                        Text("30", fontSize = 8.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+                FilledIconButton({ if (playing) p.pause() else p.play() }, Modifier.size(44.dp)) {
+                    Icon(if (playing) JdIcons.Pause else JdIcons.Play, contentDescription = if (playing) "Pause" else "Lire", Modifier.size(26.dp))
+                }
+                IconButton(onClose) { Icon(JdIcons.Close, contentDescription = "Fermer le lecteur") }
             }
         }
     }
