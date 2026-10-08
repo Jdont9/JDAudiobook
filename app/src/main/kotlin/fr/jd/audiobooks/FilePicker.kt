@@ -1,5 +1,6 @@
 package fr.jd.audiobooks
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -77,11 +78,11 @@ fun FilePickerDialog(bk: Book, durs: List<Long>, current: Int, store: Store, onP
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Ouvrir un fichier") },
+        title = { Text(stringResource(R.string.open_file)) },
         text = {
             Column {
                 Text(
-                    "${bk.uris.size} fichiers" + if (total > 0) " · ${fmt(total)}" else "",
+                    stringResource(R.string.n_files, bk.uris.size) + if (total > 0) " · ${fmt(total)}" else "",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (prefix.isNotEmpty()) Text(
@@ -89,7 +90,7 @@ fun FilePickerDialog(bk: Book, durs: List<Long>, current: Int, store: Store, onP
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (!orderOk) Text(
-                    "⚠ L'ordre de la liste (alphabétique) ne suit pas la numérotation des fichiers (ex. 10 avant 2).",
+                    stringResource(R.string.order_warning),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -121,13 +122,13 @@ fun FilePickerDialog(bk: Book, durs: List<Long>, current: Int, store: Store, onP
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(showDur, { showDur = it; store.setFlag("pick_dur", it) })
-                    Text("Durée", Modifier.clickable { showDur = !showDur; store.setFlag("pick_dur", showDur) })
+                    Text(stringResource(R.string.duration), Modifier.clickable { showDur = !showDur; store.setFlag("pick_dur", showDur) })
                     Spacer(Modifier.width(12.dp))
                     Checkbox(showPos, { showPos = it; store.setFlag("pick_pos", it) })
-                    Text("Position", Modifier.clickable { showPos = !showPos; store.setFlag("pick_pos", showPos) })
+                    Text(stringResource(R.string.position), Modifier.clickable { showPos = !showPos; store.setFlag("pick_pos", showPos) })
                 }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text("Fermer") } }
+        confirmButton = { TextButton(onDismiss) { Text(stringResource(R.string.close)) } }
     )
 }

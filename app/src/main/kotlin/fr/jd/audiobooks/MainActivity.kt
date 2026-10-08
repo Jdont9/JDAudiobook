@@ -1,5 +1,6 @@
 package fr.jd.audiobooks
 
+import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.*
@@ -98,7 +99,7 @@ fun App(store: Store) {
     val statsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         if (u != null) scope.launch {
             val (matched, total) = withContext(Dispatchers.IO) { SabpImport.importStatistics(ctx, store, u, books) }
-            importMsg = "$matched livre(s) sur $total importé(s) depuis statistics.xml"
+            importMsg = ctx.getString(R.string.import_done, matched, total)
         }
     }
     var openJob by remember { mutableStateOf<Job?>(null) }
@@ -165,28 +166,28 @@ fun App(store: Store) {
         showStats -> StatsScreen(store) { showStats = false }
         else -> Column {
             Surface(color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
-                Text("JD Audiobook Reader", Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.app_name), Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.titleMedium)
             }
             Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
-                IconButton({ showStats = true }) { Icon(JdIcons.BarChart, contentDescription = "Statistiques") }
-                IconButton({ showCovers = true }, enabled = books.isNotEmpty()) { Icon(JdIcons.Image, contentDescription = "Rechercher les pochettes manquantes") }
-                IconButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }) { Icon(JdIcons.Download, contentDescription = "Importer des statistiques") }
-                IconButton({ picker.launch(null) }) { Icon(JdIcons.Folder, contentDescription = "Choisir le dossier des livres") }
-                IconButton({ scope.launch { rescan() } }, enabled = scanProgress == null) { Icon(JdIcons.Refresh, contentDescription = "Actualiser la bibliothèque") }
+                IconButton({ showStats = true }) { Icon(JdIcons.BarChart, contentDescription = stringResource(R.string.statistics)) }
+                IconButton({ showCovers = true }, enabled = books.isNotEmpty()) { Icon(JdIcons.Image, contentDescription = stringResource(R.string.find_missing_covers)) }
+                IconButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }) { Icon(JdIcons.Download, contentDescription = stringResource(R.string.import_stats)) }
+                IconButton({ picker.launch(null) }) { Icon(JdIcons.Folder, contentDescription = stringResource(R.string.choose_folder)) }
+                IconButton({ scope.launch { rescan() } }, enabled = scanProgress == null) { Icon(JdIcons.Refresh, contentDescription = stringResource(R.string.refresh_library)) }
             }
             scanProgress?.let { sp ->
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(
-                        "Scan en cours… ${sp.folders} dossier(s) explorés · ${sp.books} livre(s) trouvés",
+                        stringResource(R.string.scan_progress, sp.folders, sp.books),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
             if (store.root != null && !ProgressFile.canWrite(ctx, store.root)) {
                 Text(
-                    "Écriture non autorisée sur ce dossier : appuie sur l'icône dossier et choisis-le à nouveau pour enregistrer la progression à côté des fichiers audio.",
+                    stringResource(R.string.write_not_allowed),
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
                 )
             }
@@ -194,13 +195,13 @@ fun App(store: Store) {
                 Text(it, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             if (books.isEmpty() && scanProgress == null && store.root != null) {
-                Text("Aucun livre en cache — appuie sur l'icône d'actualisation ↻.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.no_books_cached), Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
             }
             if (store.root == null) {
-                Text("Choisis un dossier (icône dossier en haut) pour commencer.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.pick_folder_hint), Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
             }
 
-            val tabs = listOf("TOUS", "NOUVEAUX", "EN COURS", "LUS")
+            val tabs = listOf(stringResource(R.string.tab_all), stringResource(R.string.tab_new), stringResource(R.string.tab_in_progress), stringResource(R.string.tab_finished))
             var tab by remember { mutableStateOf(0) }
             val shown = when (tab) {
                 1 -> books.filter { !store.hasSaved(it.path) && !store.finished(it.path) }
@@ -242,9 +243,9 @@ fun App(store: Store) {
                             Spacer(Modifier.height(28.dp))
                             Text(
                                 when {
-                                    finished -> "Terminé"
-                                    s != null -> "Reprise ${s.index + 1}/${bk.uris.size} à ${fmt(s.pos)}"
-                                    else -> "${bk.uris.size} fichier(s)"
+                                    finished -> stringResource(R.string.status_finished)
+                                    s != null -> stringResource(R.string.resume_at, s.index + 1, bk.uris.size, fmt(s.pos))
+                                    else -> stringResource(R.string.n_files, bk.uris.size)
                                 } + (total?.let { " · ${fmt(it)}" } ?: ""),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -293,14 +294,14 @@ fun MiniPlayer(books: List<Book>, onOpen: (Book) -> Unit, onClose: () -> Unit) {
                 }
                 IconButton({ p.seekBack() }) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(JdIcons.Replay, contentDescription = "Reculer de 30 secondes", Modifier.size(28.dp))
+                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.back_30), Modifier.size(28.dp))
                         Text("30", fontSize = 8.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
                 FilledIconButton({ if (playing) p.pause() else p.play() }, Modifier.size(44.dp)) {
-                    Icon(if (playing) JdIcons.Pause else JdIcons.Play, contentDescription = if (playing) "Pause" else "Lire", Modifier.size(26.dp))
+                    Icon(if (playing) JdIcons.Pause else JdIcons.Play, contentDescription = if (playing) stringResource(R.string.pause) else stringResource(R.string.play), Modifier.size(26.dp))
                 }
-                IconButton(onClose) { Icon(JdIcons.Close, contentDescription = "Fermer le lecteur") }
+                IconButton(onClose) { Icon(JdIcons.Close, contentDescription = stringResource(R.string.close_player)) }
             }
         }
     }
@@ -383,7 +384,7 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             CircularProgressIndicator()
             Spacer(Modifier.height(8.dp))
-            Text("Chargement…", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.weight(1f))
         }
         return
@@ -410,7 +411,7 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 )
             ) {
                 Icon(
-                    JdIcons.Check, contentDescription = if (finished) "Lu (appuie pour annuler)" else "Marquer comme lu",
+                    JdIcons.Check, contentDescription = if (finished) stringResource(R.string.mark_read_undo) else stringResource(R.string.mark_read),
                     tint = if (finished) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -429,7 +430,7 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 }
             }
             if (chaps.isNotEmpty()) {
-                item { Text("Chapitres", style = MaterialTheme.typography.titleMedium) }
+                item { Text(stringResource(R.string.chapters), style = MaterialTheme.typography.titleMedium) }
                 itemsIndexed(chaps) { i, c ->
                     Text(
                         "${fmt(c.startMs)}  ${c.title}",
@@ -443,19 +444,19 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(Modifier.fillMaxWidth().clickable { showFiles = true }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(bk.names.getOrElse(fi) { "" } + "  (${fi + 1}/${bk.uris.size})", Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Icon(JdIcons.ArrowDropDown, contentDescription = "Choisir un fichier")
+                Icon(JdIcons.ArrowDropDown, contentDescription = stringResource(R.string.choose_file))
             }
             if (showFiles) FilePickerDialog(bk, durs, fi, store, onPick = { p.seekTo(it, 0); showFiles = false }, onDismiss = { showFiles = false })
-            if (chaps.isNotEmpty()) Text("Chapitre ${ci + 1}/${chaps.size} · ${chaps[ci].title}", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+            if (chaps.isNotEmpty()) Text(stringResource(R.string.chapter_of, ci + 1, chaps.size, chaps[ci].title), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
             val dur = p.duration.coerceAtLeast(1)
             Slider(p.currentPosition.toFloat() / dur, { p.seekTo((it * dur).toLong()) })
             Row { Text(fmt(p.currentPosition), Modifier.weight(1f)); Text(fmt(dur)) }
             Text(
                 when {
-                    total > 0 && elapsed >= 0 -> "Lecture ${fmt(elapsed)} de ${fmt(total)} · ${(elapsed * 100 / total).coerceIn(0, 100)} % · Reste ${fmt((total - elapsed).coerceAtLeast(0))}"
-                    probing != null -> "Durée du livre : calcul… ${probing!!.first}/${probing!!.second}"
-                    probeFailed -> "Durée du livre : indisponible (fichier illisible)"
-                    else -> "Durée du livre : calcul…"
+                    total > 0 && elapsed >= 0 -> stringResource(R.string.listened_of, fmt(elapsed), fmt(total), (elapsed * 100 / total).coerceIn(0, 100), fmt((total - elapsed).coerceAtLeast(0)))
+                    probing != null -> stringResource(R.string.duration_probing, probing!!.first, probing!!.second)
+                    probeFailed -> stringResource(R.string.duration_unavailable)
+                    else -> stringResource(R.string.duration_calculating)
                 },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -463,26 +464,26 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 IconButton({
                     if (chaps.isEmpty()) p.seekToPreviousMediaItem()
                     else p.seekTo(if (p.currentPosition - chaps[ci].startMs > 3000) chaps[ci].startMs else chaps.getOrNull(ci - 1)?.startMs ?: 0)
-                }) { Icon(JdIcons.SkipPrevious, contentDescription = "Précédent", Modifier.size(28.dp)) }
+                }) { Icon(JdIcons.SkipPrevious, contentDescription = stringResource(R.string.previous), Modifier.size(28.dp)) }
                 IconButton({ p.seekBack() }) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(JdIcons.Replay, contentDescription = "Reculer de 30 secondes", Modifier.size(34.dp))
+                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.back_30), Modifier.size(34.dp))
                         Text("30", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
                     }
                 }
                 FilledIconButton({ if (playing) p.pause() else p.play() }, Modifier.size(64.dp)) {
-                    Icon(if (playing) JdIcons.Pause else JdIcons.Play, contentDescription = if (playing) "Pause" else "Lire", Modifier.size(36.dp))
+                    Icon(if (playing) JdIcons.Pause else JdIcons.Play, contentDescription = if (playing) stringResource(R.string.pause) else stringResource(R.string.play), Modifier.size(36.dp))
                 }
                 IconButton({ p.seekForward() }) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(JdIcons.Replay, contentDescription = "Avancer de 30 secondes", Modifier.size(34.dp).graphicsLayer { scaleX = -1f })
+                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.forward_30), Modifier.size(34.dp).graphicsLayer { scaleX = -1f })
                         Text("30", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
                     }
                 }
                 IconButton({
                     val n = chaps.getOrNull(ci + 1)
                     if (n != null) p.seekTo(n.startMs) else p.seekToNextMediaItem()
-                }) { Icon(JdIcons.SkipNext, contentDescription = "Suivant", Modifier.size(28.dp)) }
+                }) { Icon(JdIcons.SkipNext, contentDescription = stringResource(R.string.next), Modifier.size(28.dp)) }
             }
             // Réglages : vitesse, minuterie de sommeil, saut des silences, volume (une seule rangée d'icônes)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -496,32 +497,32 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 }
                 Box(Modifier.weight(1f)) {
                     val sleepBtn: @Composable () -> Unit = {
-                        Icon(JdIcons.Moon, contentDescription = "Minuterie de sommeil", Modifier.size(20.dp))
+                        Icon(JdIcons.Moon, contentDescription = stringResource(R.string.sleep_timer), Modifier.size(20.dp))
                         if (left > 0) Text(fmt(left), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
                     }
                     if (left > 0) FilledTonalButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
                     else OutlinedButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
                     DropdownMenu(sleepMenu, { sleepMenu = false }) {
                         listOf(0, 10, 15, 30, 45, 60, 90).forEach { m ->
-                            DropdownMenuItem({ Text(if (m == 0) "Désactivé" else "$m min") }, { Sleep.set(m); sleepMenu = false })
+                            DropdownMenuItem({ Text(if (m == 0) stringResource(R.string.off) else stringResource(R.string.minutes_short, m)) }, { Sleep.set(m); sleepMenu = false })
                         }
                     }
                 }
                 FilterChip(
                     skipSilence, { skipSilence = !skipSilence; p.skipSilenceEnabled = skipSilence },
-                    { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Icon(JdIcons.GraphicEq, contentDescription = "Passer les silences", Modifier.size(20.dp)) } },
+                    { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Icon(JdIcons.GraphicEq, contentDescription = stringResource(R.string.skip_silence), Modifier.size(20.dp)) } },
                     Modifier.weight(1f)
                 )
                 Box(Modifier.weight(1f)) {
                     val volBtn: @Composable () -> Unit = {
-                        Icon(JdIcons.VolumeUp, contentDescription = "Gain de volume", Modifier.size(20.dp))
+                        Icon(JdIcons.VolumeUp, contentDescription = stringResource(R.string.volume_boost), Modifier.size(20.dp))
                         if (boost > 0) Text("+$boost", Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
                     }
                     if (boost > 0) FilledTonalButton({ boostMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { volBtn() }
                     else OutlinedButton({ boostMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { volBtn() }
                     DropdownMenu(boostMenu, { boostMenu = false }) {
                         Boost.levels.forEach { db ->
-                            DropdownMenuItem({ Text(if (db == 0) "Normal" else "+$db dB") }, {
+                            DropdownMenuItem({ Text(if (db == 0) stringResource(R.string.normal) else "+$db dB") }, {
                                 boost = db; Boost.set(db); store.setBoost(bk.path, db); boostMenu = false
                             })
                         }
@@ -544,12 +545,12 @@ fun StatsScreen(store: Store, back: () -> Unit) {
     val content = st.sumOf { it.content }
     Column(Modifier.padding(16.dp).statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BackButton(back)
-        Text("Statistiques", style = MaterialTheme.typography.headlineSmall)
-        Text("Aujourd'hui : ${fmt(st.filter { it.day == today }.sumOf { it.wall })}")
-        Text("Total écouté : ${fmt(wall)}")
-        Text("Contenu écouté : ${fmt(content)}")
-        Text("Gagné grâce à la vitesse : ${fmt((content - wall).coerceAtLeast(0))}")
-        Text("7 derniers jours", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.statistics), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.stats_today, fmt(st.filter { it.day == today }.sumOf { it.wall })))
+        Text(stringResource(R.string.stats_total, fmt(wall)))
+        Text(stringResource(R.string.stats_content, fmt(content)))
+        Text(stringResource(R.string.stats_saved, fmt((content - wall).coerceAtLeast(0))))
+        Text(stringResource(R.string.stats_7days), style = MaterialTheme.typography.titleMedium)
         Row(Modifier.fillMaxWidth().height(120.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             perDay.forEachIndexed { i, v ->
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -558,7 +559,7 @@ fun StatsScreen(store: Store, back: () -> Unit) {
                 }
             }
         }
-        Text("Par livre", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.stats_by_book), style = MaterialTheme.typography.titleMedium)
         LazyColumn {
             items(st.groupBy { it.book }.map { (b, l) -> b to l.sumOf { it.wall } }.sortedByDescending { it.second }) { (b, t) ->
                 ListItem(headlineContent = { Text(b.substringAfterLast('/')) }, trailingContent = { Text(fmt(t)) })

@@ -4,8 +4,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Signature de la version release : la clé n'est JAMAIS dans le dépôt. Elle est lue depuis des variables
-// d'environnement (CI) ou depuis ~/.gradle/gradle.properties (build local). Voir RELEASING.md.
+// Release signing: the key is NEVER in the repository. It is read from environment variables (CI)
+// or from ~/.gradle/gradle.properties (local build). See RELEASING.md.
 fun secret(env: String, prop: String): String? =
     System.getenv(env)?.takeIf { it.isNotBlank() } ?: (findProperty(prop) as String?)?.takeIf { it.isNotBlank() }
 
@@ -18,8 +18,8 @@ android {
         applicationId = "fr.jd.audiobooks"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
     signingConfigs {
         create("release") {
@@ -34,7 +34,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Sans clé fournie, l'APK release sort non signé (donc non installable) plutôt que signé avec une clé de debug.
+            // With no key provided, the release APK is left unsigned (not installable) rather than signed with a debug key.
             signingConfig = if (keystorePath != null) signingConfigs.getByName("release") else null
         }
     }

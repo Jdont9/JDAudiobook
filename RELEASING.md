@@ -1,63 +1,77 @@
-# Publier une version signée
+# Publishing a signed release
 
-Un APK Android doit être signé pour s'installer. **Toutes les mises à jour d'une appli doivent être signées avec la même clé** : si tu la perds, les utilisateurs devront désinstaller puis réinstaller (et perdront leurs données locales). Garde donc le fichier `.jks` et ses mots de passe dans un endroit sûr, **en dehors du dépôt** (gestionnaire de mots de passe + copie de secours).
+🇫🇷 [En français](RELEASING.fr.md)
 
-## 1. Créer la clé (une seule fois)
+An Android APK must be signed to install. **Every update of an app must be signed with the same key**: if you lose it, users will have to uninstall and reinstall (and lose local data). Keep the `.jks` file and its passwords somewhere safe, **outside the repository** (password manager + backup copy).
 
-Il faut `keytool`, fourni avec le JDK 17.
+## 1. Create the key (once)
+
+You need `keytool`, shipped with JDK 17.
 
 ```bash
-keytool -genkeypair -v \
+keytool -genkeypair -v -storetype PKCS12 \
   -keystore jdaudiobook.jks \
   -alias jdaudiobook \
   -keyalg RSA -keysize 4096 -validity 10000
 ```
 
-Réponds aux questions (nom, etc.) et choisis un mot de passe pour le keystore et pour la clé. `*.jks` est dans le `.gitignore`.
+Answer the questions (name, etc. — you may leave them blank) and choose a password. With the PKCS12 format the key password is the same as the keystore password. `*.jks` is in `.gitignore`.
 
-## 2. Ajouter les secrets sur GitHub
-
-Dépôt → **Settings → Secrets and variables → Actions → New repository secret** :
-
-| Secret | Valeur |
-|---|---|
-| `KEYSTORE_BASE64` | le fichier `.jks` encodé en base64 (voir ci-dessous) |
-| `KEYSTORE_PASSWORD` | mot de passe du keystore |
-| `KEY_ALIAS` | `jdaudiobook` (l'alias choisi à l'étape 1) |
-| `KEY_PASSWORD` | mot de passe de la clé |
-
-Encodage en base64 :
+**On a phone with Termux:**
 
 ```bash
-base64 -w0 jdaudiobook.jks      # Linux
+pkg update && pkg install openjdk-17
+termux-setup-storage
+cd ~ && keytool -genkeypair -v -storetype PKCS12 -keystore jdaudiobook.jks -alias jdaudiobook -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 jdaudiobook.jks > keystore_base64.txt
+cp jdaudiobook.jks keystore_base64.txt ~/storage/downloads/
+```
+
+Delete `keystore_base64.txt` once the secrets are saved: it contains your key, only protected by its password.
+
+## 2. Add the secrets on GitHub
+
+Repository → **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_BASE64` | the `.jks` file encoded as base64 (see below) |
+| `KEYSTORE_PASSWORD` | the keystore password |
+| `KEY_ALIAS` | `jdaudiobook` (the alias chosen in step 1) |
+| `KEY_PASSWORD` | the key password (same as the keystore password with PKCS12) |
+
+Base64 encoding:
+
+```bash
+base64 -w0 jdaudiobook.jks      # Linux / Termux
 base64 -i jdaudiobook.jks       # macOS
 ```
 ```powershell
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("jdaudiobook.jks"))   # Windows PowerShell
 ```
 
-## 3. Publier
+## 3. Publish
 
-1. Mettre à jour `versionName` (ex. `1.0.1`) **et augmenter `versionCode`** dans `app/build.gradle.kts` (Android refuse d'installer une version dont le `versionCode` n'est pas supérieur).
-2. Mettre à jour `CHANGELOG.md`.
-3. Committer, puis créer le tag correspondant et le pousser :
+1. Update `versionName` (e.g. `1.1.1`) **and increase `versionCode`** in `app/build.gradle.kts` (Android refuses to install a version whose `versionCode` is not higher).
+2. Update `CHANGELOG.md` and `CHANGELOG.fr.md`.
+3. Commit, then create the matching tag and push it:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
-Le workflow vérifie que le tag (`v1.0.0`) correspond à `versionName`, compile l'APK release, vérifie sa signature, puis le publie dans **Releases** sous le nom `JDAudiobook-1.0.0.apk`. Sans les secrets, un tag `v*` fait échouer le workflow avec un message explicite.
+The workflow checks that the tag (`v1.1.0`) matches `versionName`, builds the release APK, verifies its signature, then publishes it under **Releases** as `JDAudiobook-1.1.0.apk`. Without the secrets, a `v*` tag makes the workflow fail with an explicit message.
 
-## Build signé en local (optionnel)
+## Signed build locally (optional)
 
-Dans `~/.gradle/gradle.properties` (jamais dans le dépôt) :
+In `~/.gradle/gradle.properties` (never in the repository):
 
 ```properties
-jd.keystore.file=/chemin/absolu/vers/jdaudiobook.jks
+jd.keystore.file=/absolute/path/to/jdaudiobook.jks
 jd.keystore.password=...
 jd.key.alias=jdaudiobook
 jd.key.password=...
 ```
 
-puis `./gradlew assembleRelease` → `app/build/outputs/apk/release/app-release.apk`. Sans ces valeurs, l'APK release est non signé.
+then `./gradlew assembleRelease` → `app/build/outputs/apk/release/app-release.apk`. Without these values, the release APK is unsigned.

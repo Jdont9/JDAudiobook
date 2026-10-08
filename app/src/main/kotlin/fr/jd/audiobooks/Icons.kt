@@ -1,5 +1,6 @@
 package fr.jd.audiobooks
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -39,5 +40,5 @@ object JdIcons {
 /** Flèche de retour vers la bibliothèque. */
 @Composable
 fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    IconButton(onClick, modifier) { Icon(JdIcons.ArrowBack, contentDescription = "Retour à la bibliothèque") }
+    IconButton(onClick, modifier) { Icon(JdIcons.ArrowBack, contentDescription = stringResource(R.string.back_to_library)) }
 }

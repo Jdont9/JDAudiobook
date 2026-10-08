@@ -238,23 +238,23 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Pochettes manquantes") },
+        title = { Text(ctx.getString(R.string.missing_covers_title)) },
         text = {
             Column {
                 val m = missing
                 when {
                     m == null -> {
-                        Text("Analyse… $checked/${books.size}", style = MaterialTheme.typography.bodyMedium)
+                        Text(ctx.getString(R.string.analyzing, checked, books.size), style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(8.dp))
                         LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
-                    m.isEmpty() -> Text("Tous les livres ont déjà une pochette.", style = MaterialTheme.typography.bodyMedium)
+                    m.isEmpty() -> Text(ctx.getString(R.string.all_have_covers), style = MaterialTheme.typography.bodyMedium)
                     else -> {
                         Text(
                             when {
-                                done -> "Terminé : $found pochette(s) trouvée(s), ${m.size - found} introuvable(s)."
-                                running -> "Recherche ${index + 1}/${m.size} · ${m[index.coerceIn(0, m.lastIndex)].name}"
-                                else -> "${m.size} livre(s) sur ${books.size} sans pochette. La recherche se fait sur Internet (iTunes, Audible, Audiolib, Google Books, Open Library) d'après le nom du dossier ; l'image est enregistrée en cover.jpg dans le dossier du livre."
+                                done -> ctx.getString(R.string.covers_done, found, m.size - found)
+                                running -> ctx.getString(R.string.covers_searching, index + 1, m.size, m[index.coerceIn(0, m.lastIndex)].name)
+                                else -> ctx.getString(R.string.covers_intro, m.size, books.size)
                             },
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -268,7 +268,7 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
                                 items(log.asReversed()) { e ->
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                         Text(e.text, Modifier.weight(1f).padding(vertical = 2.dp), style = MaterialTheme.typography.bodySmall)
-                                        if (!e.ok) TextButton({ pasteFor = e.bk; link = ""; linkErr = null }) { Text("Lien") }
+                                        if (!e.ok) TextButton({ pasteFor = e.bk; link = ""; linkErr = null }) { Text(ctx.getString(R.string.link)) }
                                     }
                                 }
                             }
@@ -285,29 +285,29 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
                     m.forEachIndexed { i, bk ->
                         index = i
                         val r = withContext(Dispatchers.IO) { CoverFetch.find(bk) }
-                        if (r == null) log += Entry(bk, "✗ ${bk.name} : introuvable", false)
+                        if (r == null) log += Entry(bk, ctx.getString(R.string.not_found_entry, bk.name), false)
                         else {
                             val uri = withContext(Dispatchers.IO) { CoverFetch.save(ctx, store, bk, r.jpeg) }
                             found++
                             onCover(bk.path, uri)
-                            log += Entry(bk, "✓ ${bk.name} (${r.source})" + if (uri == null) " · gardée dans l'appli seulement" else "", true)
+                            log += Entry(bk, ctx.getString(R.string.found_entry, bk.name, r.source) + if (uri == null) ctx.getString(R.string.kept_in_app) else "", true)
                         }
                     }
                     running = false; done = true
                 }
-            }) { Text("Rechercher") }
+            }) { Text(ctx.getString(R.string.search)) }
         },
-        dismissButton = { TextButton(onDismiss) { Text("Fermer") } }
+        dismissButton = { TextButton(onDismiss) { Text(ctx.getString(R.string.close)) } }
     )
 
     pasteFor?.let { bk ->
         AlertDialog(
             onDismissRequest = { if (!linkBusy) pasteFor = null },
-            title = { Text("Coller un lien") },
+            title = { Text(ctx.getString(R.string.paste_link_title)) },
             text = {
                 Column {
                     Text(
-                        "Adresse de la page du livre (Audiolib, Audible, Babelio…) ou d'une image, pour « ${bk.name} ».",
+                        ctx.getString(R.string.paste_link_help, bk.name),
                         style = MaterialTheme.typography.bodySmall
                     )
                     OutlinedTextField(
@@ -322,21 +322,21 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
                     linkBusy = true
                     scope.launch {
                         val r = withContext(Dispatchers.IO) { CoverFetch.fromUrl(link) }
-                        if (r == null) linkErr = "Aucune image trouvée sur ce lien."
+                        if (r == null) linkErr = ctx.getString(R.string.no_image_on_link)
                         else {
                             val uri = withContext(Dispatchers.IO) { CoverFetch.save(ctx, store, bk, r.jpeg) }
                             found++
                             onCover(bk.path, uri)
                             val i = log.indexOfFirst { it.bk.path == bk.path }
-                            val e = Entry(bk, "✓ ${bk.name} (lien)" + if (uri == null) " · gardée dans l'appli seulement" else "", true)
+                            val e = Entry(bk, ctx.getString(R.string.found_entry, bk.name, ctx.getString(R.string.link_label)) + if (uri == null) ctx.getString(R.string.kept_in_app) else "", true)
                             if (i >= 0) log[i] = e else log += e
                             pasteFor = null
                         }
                         linkBusy = false
                     }
-                }) { Text("Valider") }
+                }) { Text(ctx.getString(R.string.confirm)) }
             },
-            dismissButton = { TextButton({ pasteFor = null }, enabled = !linkBusy) { Text("Annuler") } }
+            dismissButton = { TextButton({ pasteFor = null }, enabled = !linkBusy) { Text(ctx.getString(R.string.cancel)) } }
         )
     }
 }

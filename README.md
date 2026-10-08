@@ -1,112 +1,128 @@
 # JD Audiobook Reader
 
-Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes fichiers (MP3, M4B…) depuis un dossier de ton téléphone. Pas de compte, pas de publicité, pas de suivi.
+🇫🇷 [Lire en français](README.fr.md)
 
-Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.0.0**.
+A simple, fast audiobook player for Android that plays your files (MP3, M4B…) straight from a folder on your phone. No account, no ads, no tracking.
 
-## Fonctionnalités
+Written in Kotlin with Jetpack Compose and Media3. Version **1.1.0**. The app is available in **English and French** (it follows your phone's language).
 
-**Bibliothèque**
-- Tu choisis un dossier racine ; l'appli le parcourt et considère chaque dossier contenant des fichiers audio comme un livre.
-- Formats : `mp3`, `m4b`, `m4a`, `ogg`, `opus`, `flac`, `wav`. Les fichiers sont triés en ordre naturel (`2` avant `10`).
-- Pochette : image du dossier (de préférence `cover`, `folder` ou `front`), sinon image intégrée au fichier audio.
-- Recherche de pochettes manquantes sur Internet (voir plus bas).
+> 🤖 **Built by an AI.** The code, documentation and scripts in this repository were written by an artificial intelligence (Claude, by Anthropic) from the requests and feedback of the project's owner, who directed the development and uses the app. Like any software it may contain bugs; it is provided as is, without warranty.
 
-**Lecteur**
-- Recul/avance de 30 s, fichier précédent/suivant, choix d'un fichier du livre.
-- Vitesse de ×0,75 à ×3, minuterie de sommeil (10 à 90 min), saut des silences, gain de volume de +3 à +12 dB (mémorisé par livre).
-- Chapitres pour les fichiers `m4b`/`m4a`.
-- **Mini-lecteur** en bas de la bibliothèque dès qu'un livre est chargé : pochette, titre, recul 30 s, lecture/pause, fermer. Un appui rouvre le lecteur sans rien recharger.
-- **Retour** (bouton ou geste du système, bouton de l'appli) : revient à la bibliothèque, la lecture continue et l'appli reste ouverte. Le ✕ du mini-lecteur arrête la lecture.
-- Lecture en arrière-plan avec notification et commandes de l'écran verrouillé ; utilisable depuis **Android Auto** ; widget d'écran d'accueil.
+[![Donate](https://img.shields.io/badge/Donate-PayPal-0070BA?logo=paypal&logoColor=white)](https://www.paypal.me/jd02310)
 
-**Progression et statistiques**
-- Position, vitesse et état « lu » enregistrés par livre, y compris sans l'écran du lecteur (service) ou depuis Android Auto.
-- Statistiques d'écoute : aujourd'hui, 7 derniers jours, par livre, et temps gagné grâce à la vitesse.
-- Reprise depuis **Smart AudioBook Player** : les fichiers `position.sabp.dat` sont lus au scan, et `statistics.xml` peut être importé (icône de téléchargement).
+## Features
 
-## Installation
+**Library**
+- You pick a root folder; the app scans it and treats every folder that contains audio files as a book.
+- Formats: `mp3`, `m4b`, `m4a`, `ogg`, `opus`, `flac`, `wav`. Files are sorted in natural order (`2` before `10`).
+- Cover art: an image in the folder (preferably named `cover`, `folder` or `front`), otherwise the artwork embedded in the audio file.
+- Missing covers can be searched for on the internet (see below).
 
-1. Ouvre la page **Releases** du dépôt GitHub et télécharge `JDAudiobook-1.0.0.apk` sur ton téléphone.
-2. Ouvre le fichier. Android te demandera d'autoriser l'installation depuis cette source (navigateur ou gestionnaire de fichiers) : accepte.
-3. Lance l'appli, appuie sur l'icône **dossier** et choisis le dossier qui contient tes livres. Autorise l'accès, y compris en écriture (nécessaire pour la progression et les pochettes).
+**Player**
+- ±30 s seek, previous/next file, jump to any file of the book.
+- Speed from ×0.75 to ×3, sleep timer (10 to 90 min), silence skipping, volume boost from +3 to +12 dB (remembered per book).
+- Chapters for `m4b`/`m4a` files.
+- **Mini player** at the bottom of the library whenever a book is loaded: cover, title, back 30 s, play/pause, close. Tapping it reopens the player without reloading anything.
+- **Back** (system button, gesture, or the in-app button) returns to the library: playback keeps going and the app stays open. The ✕ on the mini player stops playback.
+- Background playback with a notification and lock-screen controls; usable from **Android Auto**; home-screen widget.
 
-Android 8.0 (API 26) ou plus récent. Les mises à jour s'installent par-dessus la version précédente, car tous les APK sont signés avec la même clé.
+**Progress and statistics**
+- Position, speed and "finished" state are saved per book, even when the player screen is closed (service) or when driven from Android Auto.
+- Listening statistics: today, last 7 days, per book, and time saved thanks to speed.
+- Migration from **Smart AudioBook Player**: `position.sabp.dat` files are read during the scan, and `statistics.xml` can be imported (download icon).
 
-## Organisation des livres
+## Install
+
+1. Open the repository's **Releases** page and download `JDAudiobook-1.1.0.apk` on your phone.
+2. Open the file. Android will ask you to allow installs from that source (your browser or file manager): accept.
+3. Launch the app, tap the **folder** icon and choose the folder that holds your books. Grant access, including write access (needed for progress and covers).
+
+Requires Android 8.0 (API 26) or newer. Updates install over the previous version because every APK is signed with the same key.
+
+## How to organise your books
 
 ```
-Livres/
-├── Auteur/
-│   ├── Titre du livre/
+Books/
+├── Author/
+│   ├── Book title/
 │   │   ├── 01.mp3
 │   │   ├── 02.mp3
-│   │   ├── cover.jpg            ← pochette (facultatif)
-│   │   └── position.jd.json     ← créé par l'appli
-│   └── Autre livre/
-│       └── livre.m4b            ← un seul fichier m4b convient aussi
+│   │   ├── cover.jpg            ← cover (optional)
+│   │   └── position.jd.json     ← created by the app
+│   └── Another book/
+│       └── book.m4b             ← a single m4b file works too
 └── ...
 ```
 
-Un dossier = un livre. Le nom du dossier sert de titre, et de base à la recherche de pochettes.
+One folder = one book. The folder name is used as the title and as the basis for the cover search.
 
-## Pochettes manquantes
+## Missing covers
 
-L'icône image de la bibliothèque analyse les livres sans pochette, puis cherche sur Internet d'après le nom du dossier, dans cet ordre : **iTunes** (livres audio), **Audible** (France puis États-Unis), **Audiolib**, **Google Books**, **Open Library**. Un résultat n'est gardé que si son titre ressemble assez au nom du livre ; un numéro de tome absent du résultat le fait écarter.
+The image icon in the library scans for books without a cover, then searches the internet from the folder name, in this order: **iTunes** (audiobooks), **Audible** (France, then US), **Audiolib**, **Google Books**, **Open Library**. A result is kept only if its title is close enough to the book name; a volume number that is missing from the result makes it rejected.
 
-- L'image est enregistrée en `cover.jpg` dans le dossier du livre (donc retrouvée aux scans suivants), avec une copie dans l'appli en secours si l'écriture dans le dossier est refusée.
-- Pour un livre « introuvable », le bouton **Lien** permet de coller l'adresse de sa page (Audiolib, Audible, Babelio…) ou d'une image.
-- Audiolib est interrogé via l'API de recherche de leur site (`api.hachette.fr`), qui n'est pas documentée : elle peut changer sans prévenir. Le bouton **Lien** reste alors disponible.
+- The image is saved as `cover.jpg` in the book's folder (so it is found again on later scans), with a backup copy inside the app in case writing to the folder is refused.
+- For a book that is "not found", the **Link** button lets you paste the address of its page (Audiolib, Audible, Babelio…) or of an image: the app picks up the cover (`og:image` tag).
+- Audiolib is queried through the site's own search API (`api.hachette.fr`), which is undocumented and may change without notice. The **Link** button remains available as a fallback.
 
-## Fichiers écrits dans tes dossiers
+## Files written in your folders
 
-| Fichier | Rôle |
+| File | Purpose |
 |---|---|
-| `position.jd.json` | Progression du livre (fichier, position, vitesse, lu/non lu, date), lisible et modifiable à la main. Écrit à la pause, au changement de fichier, toutes les 20 s en lecture et en quittant le lecteur. S'il est plus récent que la sauvegarde locale, il est appliqué à l'ouverture et au rescan. |
-| `cover.jpg` | Pochette téléchargée. |
+| `position.jd.json` | The book's progress (file, position, speed, finished or not, date); human-readable and hand-editable. Written on pause, on file change, every 20 s while playing and when leaving the player. If it is newer than the local save, it is applied when the book is opened and on rescan. |
+| `cover.jpg` | Downloaded cover. |
 
-Les fichiers de Smart AudioBook Player (`position.sabp.dat`) ne sont jamais modifiés.
+Smart AudioBook Player's `position.sabp.dat` files are never modified.
 
-## Vie privée
+## Privacy
 
-- Aucune donnée n'est envoyée à l'auteur ; aucun compte, aucune statistique d'usage, aucune publicité.
-- Le seul accès réseau est la recherche de pochettes, que tu déclenches toi-même : le **titre du livre** (nom du dossier) est alors envoyé à iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books et Open Library.
-- Permissions : lecture en arrière-plan (service de premier plan), notifications, maintien de l'appareil éveillé pendant la lecture, Internet (pochettes uniquement). L'accès aux fichiers passe par le sélecteur de dossier d'Android, limité au dossier que tu choisis.
+- Nothing is sent to the author; no account, no usage analytics, no ads.
+- The only network access is the cover search, which you trigger yourself: the **book title** (folder name) is then sent to iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books and Open Library.
+- Permissions: background playback (foreground service), notifications, keeping the device awake while playing, internet (covers only). File access goes through Android's folder picker and is limited to the folder you choose.
 
-## Compiler soi-même
+## Build it yourself
 
-Prérequis : JDK 17 et Android SDK (API 34).
+Requirements: JDK 17 and the Android SDK (API 34).
 
 ```bash
-./gradlew assembleDebug      # APK de test : app/build/outputs/apk/debug/
-./gradlew assembleRelease    # APK release, signé si une clé est fournie (voir RELEASING.md)
+./gradlew assembleDebug      # test APK: app/build/outputs/apk/debug/
+./gradlew assembleRelease    # release APK, signed if a key is provided (see RELEASING.md)
 ```
 
-Le workflow GitHub Actions (`.github/workflows/build.yml`) compile un APK debug à chaque push. Pour publier une version signée, voir **[RELEASING.md](RELEASING.md)**.
+The GitHub Actions workflow (`.github/workflows/build.yml`) builds a debug APK on every push. To publish a signed release, see **[RELEASING.md](RELEASING.md)**.
 
-## Structure du code
+## Translations
 
-`app/src/main/kotlin/fr/jd/audiobooks/` :
+User-facing text lives in Android string resources: `app/src/main/res/values/strings.xml` (English, default) and `values-fr/strings.xml` (French). To add a language, copy `strings.xml` into a new `values-xx/` folder, translate it, and add the language to `res/xml/locales_config.xml`.
 
-| Fichier | Contenu |
+## Code layout
+
+`app/src/main/kotlin/fr/jd/audiobooks/`:
+
+| File | Contents |
 |---|---|
-| `MainActivity.kt` | Écrans (bibliothèque, lecteur, mini-lecteur, statistiques) et navigation |
-| `PlaybackService.kt` | Lecture en arrière-plan, session média, Android Auto, sauvegarde de la progression, minuterie de sommeil |
-| `Store.kt` | Dossier racine, scan de la bibliothèque, cache, statistiques |
-| `Progress.kt` | Fichier `position.jd.json` |
-| `Media.kt` | Pochettes locales, chapitres, formatage |
-| `CoverFetch.kt` | Recherche et téléchargement des pochettes, boîte de dialogue |
-| `SabpImport.kt` | Import depuis Smart AudioBook Player |
-| `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Gain de volume, widget, sélecteurs, icônes, thème |
+| `MainActivity.kt` | Screens (library, player, mini player, statistics) and navigation |
+| `PlaybackService.kt` | Background playback, media session, Android Auto, progress saving, sleep timer |
+| `Store.kt` | Root folder, library scan, cache, statistics |
+| `Progress.kt` | The `position.jd.json` file |
+| `Media.kt` | Local covers, chapters, formatting |
+| `CoverFetch.kt` | Cover search and download, dialog |
+| `SabpImport.kt` | Import from Smart AudioBook Player |
+| `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Volume boost, widget, pickers, icons, theme |
 
-## Limites connues
+Note: source-code comments are mostly in French.
 
-- Pas de signets ni d'égaliseur (retirés volontairement).
-- La recherche de pochettes dépend de services tiers et de leurs réponses ; une mauvaise correspondance reste possible sur des titres très courts ou génériques.
-- Le nom du dossier doit ressembler au titre du livre pour que la recherche aboutisse.
+## Known limitations
 
-## Licence
+- No bookmarks and no equalizer (removed on purpose).
+- Cover search depends on third-party services and what they return; a wrong match is still possible for very short or generic titles.
+- The folder name has to look like the book's title for the cover search to succeed.
 
-Aucune licence n'est définie pour l'instant : tous droits réservés par défaut. Ajoute un fichier `LICENSE` si tu veux autoriser la réutilisation.
+## License
 
-Historique des versions : [CHANGELOG.md](CHANGELOG.md).
+[GNU General Public License v3.0 or later](LICENSE) (GPL-3.0-or-later). This is free software: you may use it, study it, modify it and share it, including commercially, as long as any version you distribute stays under the same license with its source code available.
+
+## Support the project
+
+The app is free and will stay free. If you like it and want to thank its author, you can donate through [PayPal](https://www.paypal.me/jd02310). It is entirely optional: a donation gives no particular support entitlement.
+
+Version history: [CHANGELOG.md](CHANGELOG.md).

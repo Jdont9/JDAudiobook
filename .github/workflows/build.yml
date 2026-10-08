@@ -1,14 +1,14 @@
 name: Build APK
 
-# - Chaque push : APK debug (non signé par une vraie clé) en artefact.
-# - Si les secrets de signature existent : APK release signé en artefact.
-# - Tag vX.Y.Z : APK release signé publié dans une Release GitHub (voir RELEASING.md).
+# - Every push: debug APK as an artifact.
+# - If the signing secrets exist: signed release APK as an artifact.
+# - Tag vX.Y.Z: signed release APK published as a GitHub Release (see RELEASING.md).
 on:
   push:
   workflow_dispatch:
 
 permissions:
-  contents: write   # nécessaire pour créer la Release sur un tag
+  contents: write   # needed to create the Release on a tag
 
 jobs:
   build:
@@ -30,7 +30,7 @@ jobs:
       - name: Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # Évite l'installation du paquet "tools" obsolète ; AGP installe le reste au premier build.
+          # Avoids installing the obsolete "tools" package; AGP installs the rest on first build.
           packages: platform-tools
 
       - name: Cache Gradle
@@ -41,42 +41,42 @@ jobs:
             ~/.gradle/wrapper
           key: gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
 
-      - name: Vérifier que le tag correspond à versionName
+      - name: Check that the tag matches versionName
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           v=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           if [ "v$v" != "${GITHUB_REF_NAME}" ]; then
-            echo "::error::Le tag ${GITHUB_REF_NAME} ne correspond pas à versionName v$v (app/build.gradle.kts)"
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match versionName v$v (app/build.gradle.kts)"
             exit 1
           fi
 
-      - name: Exiger la clé de signature pour une release
+      - name: Require the signing key for a release
         if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 == ''
         run: |
-          echo "::error::Secrets de signature absents (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD). Voir RELEASING.md."
+          echo "::error::Signing secrets missing (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD). See RELEASING.md."
           exit 1
 
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 
-      - name: Upload APK debug
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: audiobooks-debug
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      - name: Préparer la clé de signature
+      - name: Prepare the signing key
         if: env.KEYSTORE_BASE64 != ''
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: Build release APK (signé)
+      - name: Build release APK (signed)
         if: env.KEYSTORE_BASE64 != ''
         run: ./gradlew --no-daemon assembleRelease
 
-      - name: Renommer et vérifier la signature
+      - name: Rename and verify the signature
         if: env.KEYSTORE_BASE64 != ''
         run: |
           version=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
@@ -86,10 +86,10 @@ jobs:
           if [ -n "$apksigner" ]; then
             "$apksigner" verify --verbose --print-certs "dist/JDAudiobook-${version}.apk"
           else
-            echo "::warning::apksigner introuvable, vérification de la signature ignorée"
+            echo "::warning::apksigner not found, signature check skipped"
           fi
 
-      - name: Upload APK release
+      - name: Upload release APK
         if: env.KEYSTORE_BASE64 != ''
         uses: actions/upload-artifact@v4
         with:
@@ -97,7 +97,7 @@ jobs:
           path: dist/*.apk
           retention-days: 90
 
-      - name: Publier la Release GitHub
+      - name: Publish the GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != ''
         uses: softprops/action-gh-release@v2
         with:
