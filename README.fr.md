@@ -4,7 +4,7 @@
 
 Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes fichiers (MP3, M4B…) depuis un dossier de ton téléphone. Pas de compte, pas de publicité, pas de suivi.
 
-Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.1.0**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
+Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.2.0**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
 
 > 🤖 **Projet réalisé par une IA.** Le code, la documentation et les scripts de ce dépôt ont été écrits par une intelligence artificielle (Claude, d'Anthropic) à partir des demandes et des retours du propriétaire du projet, qui a dirigé le développement et utilise l'appli. Comme tout logiciel, elle peut contenir des erreurs : elle est fournie telle quelle, sans garantie.
 
@@ -13,6 +13,7 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes 
 ## Fonctionnalités
 
 **Bibliothèque**
+- Les actions (statistiques, pochettes manquantes, import, choix du dossier, actualisation, À propos) sont dans un menu caché derrière l'**icône engrenage** en haut à droite, affiché seulement à la demande.
 - Tu choisis un dossier racine ; l'appli le parcourt et considère chaque dossier contenant des fichiers audio comme un livre.
 - Formats : `mp3`, `m4b`, `m4a`, `ogg`, `opus`, `flac`, `wav`. Les fichiers sont triés en ordre naturel (`2` avant `10`).
 - Pochette : image du dossier (de préférence `cover`, `folder` ou `front`), sinon image intégrée au fichier audio.
@@ -29,15 +30,19 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes 
 **Progression et statistiques**
 - Position, vitesse et état « lu » enregistrés par livre, y compris sans l'écran du lecteur (service) ou depuis Android Auto.
 - Statistiques d'écoute : aujourd'hui, 7 derniers jours, par livre, et temps gagné grâce à la vitesse.
-- Reprise depuis **Smart AudioBook Player** : les fichiers `position.sabp.dat` sont lus au scan, et `statistics.xml` peut être importé (icône de téléchargement).
+- Reprise depuis **Smart AudioBook Player** : les fichiers `position.sabp.dat` sont lus au scan, et `statistics.xml` peut être importé (menu → Importer des statistiques).
 
 ## Installation
 
-1. Ouvre la page **Releases** du dépôt GitHub et télécharge `JDAudiobook-1.1.0.apk` sur ton téléphone.
+1. Ouvre la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et télécharge `JDAudiobook-1.2.0.apk` sur ton téléphone.
 2. Ouvre le fichier. Android te demandera d'autoriser l'installation depuis cette source (navigateur ou gestionnaire de fichiers) : accepte.
-3. Lance l'appli, appuie sur l'icône **dossier** et choisis le dossier qui contient tes livres. Autorise l'accès, y compris en écriture (nécessaire pour la progression et les pochettes).
+3. Lance l'appli, ouvre le menu (**icône engrenage**, en haut à droite) → **Choisir le dossier des livres**. Autorise l'accès, y compris en écriture (nécessaire pour la progression et les pochettes).
 
 Android 8.0 (API 26) ou plus récent. Les mises à jour s'installent par-dessus la version précédente, car tous les APK sont signés avec la même clé.
+
+## Mises à jour
+
+**Menu (engrenage) → À propos → Vérifier les mises à jour.** L'appli compare sa version à la dernière release GitHub et, s'il en existe une plus récente, propose d'ouvrir la [page de téléchargement](https://github.com/Jdont9/JDAudiobook/releases). **Elle ne vérifie jamais automatiquement** : rien n'est envoyé tant que tu n'appuies pas sur le bouton, et rien n'est téléchargé ni installé à ta place — tu installes toi-même le nouvel APK par-dessus l'ancien.
 
 ## Organisation des livres
 
@@ -58,7 +63,7 @@ Un dossier = un livre. Le nom du dossier sert de titre, et de base à la recherc
 
 ## Pochettes manquantes
 
-L'icône image de la bibliothèque analyse les livres sans pochette, puis cherche sur Internet d'après le nom du dossier, dans cet ordre : **iTunes** (livres audio), **Audible** (France puis États-Unis), **Audiolib**, **Google Books**, **Open Library**. Un résultat n'est gardé que si son titre ressemble assez au nom du livre ; un numéro de tome absent du résultat le fait écarter.
+**Menu (engrenage) → Rechercher les pochettes manquantes** analyse les livres sans pochette, puis cherche sur Internet d'après le nom du dossier, dans cet ordre : **iTunes** (livres audio), **Audible** (France puis États-Unis), **Audiolib**, **Google Books**, **Open Library**. Un résultat n'est gardé que si son titre ressemble assez au nom du livre ; un numéro de tome absent du résultat le fait écarter.
 
 - L'image est enregistrée en `cover.jpg` dans le dossier du livre (donc retrouvée aux scans suivants), avec une copie dans l'appli en secours si l'écriture dans le dossier est refusée.
 - Pour un livre « introuvable », le bouton **Lien** permet de coller l'adresse de sa page (Audiolib, Audible, Babelio…) ou d'une image : l'appli en récupère la pochette (balise `og:image`).
@@ -76,8 +81,8 @@ Les fichiers de Smart AudioBook Player (`position.sabp.dat`) ne sont jamais modi
 ## Vie privée
 
 - Aucune donnée n'est envoyée à l'auteur ; aucun compte, aucune statistique d'usage, aucune publicité.
-- Le seul accès réseau est la recherche de pochettes, que tu déclenches toi-même : le **titre du livre** (nom du dossier) est alors envoyé à iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books et Open Library.
-- Permissions : lecture en arrière-plan (service de premier plan), notifications, maintien de l'appareil éveillé pendant la lecture, Internet (pochettes uniquement). L'accès aux fichiers passe par le sélecteur de dossier d'Android, limité au dossier que tu choisis.
+- Les seuls accès réseau sont ceux que tu déclenches toi-même : la recherche de pochettes (le **titre du livre**, c'est-à-dire le nom du dossier, est envoyé à iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books et Open Library) et la vérification de mise à jour (une requête vers `api.github.com`, qui, comme toute requête web, expose ton adresse IP à GitHub). Rien ne tourne en arrière-plan.
+- Permissions : lecture en arrière-plan (service de premier plan), notifications, maintien de l'appareil éveillé pendant la lecture, Internet (recherche de pochettes et vérification de mise à jour uniquement). L'accès aux fichiers passe par le sélecteur de dossier d'Android, limité au dossier que tu choisis.
 
 ## Compiler soi-même
 
@@ -106,6 +111,7 @@ Les textes de l'interface sont dans les ressources Android : `app/src/main/res/v
 | `Progress.kt` | Fichier `position.jd.json` |
 | `Media.kt` | Pochettes locales, chapitres, formatage |
 | `CoverFetch.kt` | Recherche et téléchargement des pochettes, boîte de dialogue |
+| `About.kt` | Fenêtre « À propos » et vérification de mise à jour à la demande |
 | `SabpImport.kt` | Import depuis Smart AudioBook Player |
 | `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Gain de volume, widget, sélecteurs, icônes, thème |
 

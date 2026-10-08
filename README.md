@@ -4,7 +4,7 @@
 
 A simple, fast audiobook player for Android that plays your files (MP3, M4B…) straight from a folder on your phone. No account, no ads, no tracking.
 
-Written in Kotlin with Jetpack Compose and Media3. Version **1.1.0**. The app is available in **English and French** (it follows your phone's language).
+Written in Kotlin with Jetpack Compose and Media3. Version **1.2.0**. The app is available in **English and French** (it follows your phone's language).
 
 > 🤖 **Built by an AI.** The code, documentation and scripts in this repository were written by an artificial intelligence (Claude, by Anthropic) from the requests and feedback of the project's owner, who directed the development and uses the app. Like any software it may contain bugs; it is provided as is, without warranty.
 
@@ -13,6 +13,7 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.1.0**. The app is
 ## Features
 
 **Library**
+- Actions (statistics, missing covers, import, folder choice, refresh, About) are in a menu hidden behind the **gear icon** at the top right, shown only on demand.
 - You pick a root folder; the app scans it and treats every folder that contains audio files as a book.
 - Formats: `mp3`, `m4b`, `m4a`, `ogg`, `opus`, `flac`, `wav`. Files are sorted in natural order (`2` before `10`).
 - Cover art: an image in the folder (preferably named `cover`, `folder` or `front`), otherwise the artwork embedded in the audio file.
@@ -29,15 +30,19 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.1.0**. The app is
 **Progress and statistics**
 - Position, speed and "finished" state are saved per book, even when the player screen is closed (service) or when driven from Android Auto.
 - Listening statistics: today, last 7 days, per book, and time saved thanks to speed.
-- Migration from **Smart AudioBook Player**: `position.sabp.dat` files are read during the scan, and `statistics.xml` can be imported (download icon).
+- Migration from **Smart AudioBook Player**: `position.sabp.dat` files are read during the scan, and `statistics.xml` can be imported (menu → Import statistics).
 
 ## Install
 
-1. Open the repository's **Releases** page and download `JDAudiobook-1.1.0.apk` on your phone.
+1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.2.0.apk` on your phone.
 2. Open the file. Android will ask you to allow installs from that source (your browser or file manager): accept.
-3. Launch the app, tap the **folder** icon and choose the folder that holds your books. Grant access, including write access (needed for progress and covers).
+3. Launch the app, open the menu (**gear icon**, top right) → **Choose the books folder**. Grant access, including write access (needed for progress and covers).
 
 Requires Android 8.0 (API 26) or newer. Updates install over the previous version because every APK is signed with the same key.
+
+## Updates
+
+**Menu (gear icon) → About → Check for updates.** The app compares its version with the latest GitHub release and, if a newer one exists, offers to open the [download page](https://github.com/Jdont9/JDAudiobook/releases). **It never checks automatically**: nothing is sent until you tap the button, and nothing is downloaded or installed for you — you install the new APK yourself, over the old one.
 
 ## How to organise your books
 
@@ -58,7 +63,7 @@ One folder = one book. The folder name is used as the title and as the basis for
 
 ## Missing covers
 
-The image icon in the library scans for books without a cover, then searches the internet from the folder name, in this order: **iTunes** (audiobooks), **Audible** (France, then US), **Audiolib**, **Google Books**, **Open Library**. A result is kept only if its title is close enough to the book name; a volume number that is missing from the result makes it rejected.
+**Menu (gear icon) → Find missing covers** scans for books without a cover, then searches the internet from the folder name, in this order: **iTunes** (audiobooks), **Audible** (France, then US), **Audiolib**, **Google Books**, **Open Library**. A result is kept only if its title is close enough to the book name; a volume number that is missing from the result makes it rejected.
 
 - The image is saved as `cover.jpg` in the book's folder (so it is found again on later scans), with a backup copy inside the app in case writing to the folder is refused.
 - For a book that is "not found", the **Link** button lets you paste the address of its page (Audiolib, Audible, Babelio…) or of an image: the app picks up the cover (`og:image` tag).
@@ -76,8 +81,8 @@ Smart AudioBook Player's `position.sabp.dat` files are never modified.
 ## Privacy
 
 - Nothing is sent to the author; no account, no usage analytics, no ads.
-- The only network access is the cover search, which you trigger yourself: the **book title** (folder name) is then sent to iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books and Open Library.
-- Permissions: background playback (foreground service), notifications, keeping the device awake while playing, internet (covers only). File access goes through Android's folder picker and is limited to the folder you choose.
+- The only network accesses are ones you trigger yourself: the cover search (the **book title**, i.e. the folder name, is sent to iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books and Open Library) and the update check (a request to `api.github.com`, like any web request it exposes your IP address to GitHub). Nothing runs in the background.
+- Permissions: background playback (foreground service), notifications, keeping the device awake while playing, internet (cover search and update check only). File access goes through Android's folder picker and is limited to the folder you choose.
 
 ## Build it yourself
 
@@ -106,6 +111,7 @@ User-facing text lives in Android string resources: `app/src/main/res/values/str
 | `Progress.kt` | The `position.jd.json` file |
 | `Media.kt` | Local covers, chapters, formatting |
 | `CoverFetch.kt` | Cover search and download, dialog |
+| `About.kt` | About dialog and on-demand update check |
 | `SabpImport.kt` | Import from Smart AudioBook Player |
 | `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Volume boost, widget, pickers, icons, theme |
 

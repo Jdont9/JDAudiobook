@@ -2,6 +2,10 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.2.0
+- **New**: library actions now live in a menu behind a gear icon (shown only on demand).
+- **New**: About dialog showing the version, with an on-demand update check (never automatic).
+
 ## 1.1.0
 - **New**: the app is available in English and French (follows the phone's language; per-app language choice on Android 13+).
 - **License**: the project is now released under GPL-3.0-or-later.

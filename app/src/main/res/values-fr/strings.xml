@@ -9,9 +9,9 @@
     <string name="back_to_library">Retour à la bibliothèque</string>
     <string name="import_done">%1$s livre(s) sur %2$s importé(s) depuis statistics.xml</string>
     <string name="scan_progress">Scan en cours… %1$s dossier(s) explorés · %2$s livre(s) trouvés</string>
-    <string name="write_not_allowed">Écriture non autorisée sur ce dossier : appuie sur l\'icône dossier et choisis-le à nouveau pour enregistrer la progression à côté des fichiers audio.</string>
-    <string name="no_books_cached">Aucun livre en cache — appuie sur l\'icône d\'actualisation ↻.</string>
-    <string name="pick_folder_hint">Choisis un dossier (icône dossier en haut) pour commencer.</string>
+    <string name="write_not_allowed">Écriture non autorisée sur ce dossier : ouvre le menu (icône engrenage) et choisis à nouveau le dossier des livres pour enregistrer la progression à côté des fichiers audio.</string>
+    <string name="no_books_cached">Aucun livre en cache — ouvre le menu (icône engrenage) et choisis « Actualiser la bibliothèque ».</string>
+    <string name="pick_folder_hint">Ouvre le menu (icône engrenage en haut) et choisis le dossier qui contient tes livres.</string>
     <string name="tab_all">TOUS</string>
     <string name="tab_new">NOUVEAUX</string>
     <string name="tab_in_progress">EN COURS</string>
@@ -70,4 +70,18 @@
     <string name="link_label">lien</string>
     <string name="confirm">Valider</string>
     <string name="cancel">Annuler</string>
+    <string name="settings_menu">Menu</string>
+    <string name="about">À propos</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_license">Logiciel libre sous licence GPL-3.0 ou ultérieure.</string>
+    <string name="about_ai">Réalisé par une IA (Claude, d\'Anthropic).</string>
+    <string name="about_releases">Code source et versions sur GitHub</string>
+    <string name="check_updates">Vérifier les mises à jour</string>
+    <string name="checking">Vérification…</string>
+    <string name="up_to_date">Tu as la dernière version (%1$s).</string>
+    <string name="update_available">La version %1$s est disponible.</string>
+    <string name="update_none">Aucune version n\'a encore été publiée.</string>
+    <string name="update_error">Impossible de vérifier les mises à jour. Vérifie ta connexion Internet.</string>
+    <string name="open_download_page">Ouvrir la page de téléchargement</string>
+    <string name="about_manual_note">Les mises à jour ne sont vérifiées que lorsque tu appuies sur le bouton, jamais automatiquement.</string>
 </resources>

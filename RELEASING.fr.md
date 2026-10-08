@@ -52,16 +52,16 @@ base64 -i jdaudiobook.jks       # macOS
 
 ## 3. Publier
 
-1. Mettre à jour `versionName` (ex. `1.1.1`) **et augmenter `versionCode`** dans `app/build.gradle.kts` (Android refuse d'installer une version dont le `versionCode` n'est pas supérieur).
+1. Mettre à jour `versionName` (ex. `1.2.1`) **et augmenter `versionCode`** dans `app/build.gradle.kts` (Android refuse d'installer une version dont le `versionCode` n'est pas supérieur).
 2. Mettre à jour `CHANGELOG.md` et `CHANGELOG.fr.md`.
 3. Committer, puis créer le tag correspondant et le pousser :
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
-Le workflow vérifie que le tag (`v1.1.0`) correspond à `versionName`, compile l'APK release, vérifie sa signature, puis le publie dans **Releases** sous le nom `JDAudiobook-1.1.0.apk`. Sans les secrets, un tag `v*` fait échouer le workflow avec un message explicite.
+Le workflow vérifie que le tag (`v1.2.0`) correspond à `versionName`, compile l'APK release, vérifie sa signature, puis le publie dans **Releases** sous le nom `JDAudiobook-1.2.0.apk`. Sans les secrets, un tag `v*` fait échouer le workflow avec un message explicite.
 
 ## Build signé en local (optionnel)
 

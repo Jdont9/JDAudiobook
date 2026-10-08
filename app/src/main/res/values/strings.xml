@@ -9,9 +9,9 @@
     <string name="back_to_library">Back to library</string>
     <string name="import_done">%1$s of %2$s book(s) imported from statistics.xml</string>
     <string name="scan_progress">Scanning… %1$s folder(s) explored · %2$s book(s) found</string>
-    <string name="write_not_allowed">Write access denied for this folder: tap the folder icon and pick it again so progress can be saved next to the audio files.</string>
-    <string name="no_books_cached">No books in cache — tap the refresh icon ↻.</string>
-    <string name="pick_folder_hint">Pick a folder (folder icon at the top) to get started.</string>
+    <string name="write_not_allowed">Write access denied for this folder: open the menu (gear icon) and choose the books folder again so progress can be saved next to the audio files.</string>
+    <string name="no_books_cached">No books in cache — open the menu (gear icon) and choose Refresh library.</string>
+    <string name="pick_folder_hint">Open the menu (gear icon at the top) and choose the folder that holds your books.</string>
     <string name="tab_all">ALL</string>
     <string name="tab_new">NEW</string>
     <string name="tab_in_progress">IN PROGRESS</string>
@@ -70,4 +70,18 @@
     <string name="link_label">link</string>
     <string name="confirm">Confirm</string>
     <string name="cancel">Cancel</string>
+    <string name="settings_menu">Menu</string>
+    <string name="about">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_license">Free software under the GPL-3.0-or-later license.</string>
+    <string name="about_ai">Built by an AI (Claude, by Anthropic).</string>
+    <string name="about_releases">Source code and releases on GitHub</string>
+    <string name="check_updates">Check for updates</string>
+    <string name="checking">Checking…</string>
+    <string name="up_to_date">You\'re up to date (version %1$s).</string>
+    <string name="update_available">Version %1$s is available.</string>
+    <string name="update_none">No release has been published yet.</string>
+    <string name="update_error">Couldn\'t check for updates. Check your internet connection.</string>
+    <string name="open_download_page">Open the download page</string>
+    <string name="about_manual_note">Updates are only checked when you tap the button — never automatically.</string>
 </resources>

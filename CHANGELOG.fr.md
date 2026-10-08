@@ -2,6 +2,10 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.2.0
+- **Nouveau** : les actions de la bibliothèque sont dans un menu derrière une icône engrenage (affiché seulement à la demande).
+- **Nouveau** : fenêtre « À propos » avec le numéro de version et une vérification de mise à jour à la demande (jamais automatique).
+
 ## 1.1.0
 - **Nouveau** : l'appli est disponible en français et en anglais (selon la langue du téléphone ; choix de la langue par appli sur Android 13+).
 - **Licence** : le projet est désormais publié sous GPL-3.0-or-later.

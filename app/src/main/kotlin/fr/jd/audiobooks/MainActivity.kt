@@ -72,6 +72,8 @@ fun App(store: Store) {
     var showStats by remember { mutableStateOf(false) }
     var showPlayer by remember { mutableStateOf(false) }
     var showCovers by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
     var importMsg by remember { mutableStateOf<String?>(null) }
 
     suspend fun rescan() {
@@ -166,15 +168,40 @@ fun App(store: Store) {
         showStats -> StatsScreen(store) { showStats = false }
         else -> Column {
             Surface(color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
-                Text(stringResource(R.string.app_name), Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.titleMedium)
-            }
-            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.weight(1f))
-                IconButton({ showStats = true }) { Icon(JdIcons.BarChart, contentDescription = stringResource(R.string.statistics)) }
-                IconButton({ showCovers = true }, enabled = books.isNotEmpty()) { Icon(JdIcons.Image, contentDescription = stringResource(R.string.find_missing_covers)) }
-                IconButton({ statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }) { Icon(JdIcons.Download, contentDescription = stringResource(R.string.import_stats)) }
-                IconButton({ picker.launch(null) }) { Icon(JdIcons.Folder, contentDescription = stringResource(R.string.choose_folder)) }
-                IconButton({ scope.launch { rescan() } }, enabled = scanProgress == null) { Icon(JdIcons.Refresh, contentDescription = stringResource(R.string.refresh_library)) }
+                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.app_name), Modifier.weight(1f).padding(vertical = 10.dp), style = MaterialTheme.typography.titleMedium)
+                    // Menu masqué par défaut : il s'affiche à la demande avec l'engrenage.
+                    Box {
+                        IconButton({ menuOpen = true }) { Icon(JdIcons.Settings, contentDescription = stringResource(R.string.settings_menu)) }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.statistics)) }, leadingIcon = { Icon(JdIcons.BarChart, contentDescription = null) },
+                                onClick = { menuOpen = false; showStats = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.find_missing_covers)) }, leadingIcon = { Icon(JdIcons.Image, contentDescription = null) },
+                                enabled = books.isNotEmpty(), onClick = { menuOpen = false; showCovers = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.import_stats)) }, leadingIcon = { Icon(JdIcons.Download, contentDescription = null) },
+                                onClick = { menuOpen = false; statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.choose_folder)) }, leadingIcon = { Icon(JdIcons.Folder, contentDescription = null) },
+                                onClick = { menuOpen = false; picker.launch(null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.refresh_library)) }, leadingIcon = { Icon(JdIcons.Refresh, contentDescription = null) },
+                                enabled = scanProgress == null, onClick = { menuOpen = false; scope.launch { rescan() } }
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.about)) }, leadingIcon = { Icon(JdIcons.Info, contentDescription = null) },
+                                onClick = { menuOpen = false; showAbout = true }
+                            )
+                        }
+                    }
+                }
             }
             scanProgress?.let { sp ->
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -263,6 +290,7 @@ fun App(store: Store) {
             if (showCovers) MissingCoversDialog(books, store, onCover = { path, uri ->
                 if (uri != null) books = books.map { if (it.path == path) it.copy(cover = uri) else it }
             }, onDismiss = { showCovers = false })
+            if (showAbout) AboutDialog { showAbout = false }
         }
     }
 }
