@@ -28,7 +28,7 @@ jobs:
           java-version: "17"
 
       - name: Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           # Avoids installing the obsolete "tools" package; AGP installs the rest on first build.
           packages: platform-tools
