@@ -52,6 +52,6 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-session:1.4.1")
-    implementation("com.google.guava:guava:33.3.0-android")
+    implementation("com.google.guava:guava:33.7.2-android")
     testImplementation("junit:junit:4.13.2")
 }
