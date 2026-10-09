@@ -4,7 +4,7 @@
 
 Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes fichiers (MP3, M4B…) depuis un dossier de ton téléphone. Pas de compte, pas de publicité, pas de suivi.
 
-Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.2.0**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
+Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.2.1**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
 
 > 🤖 **Projet réalisé par une IA.** Le code, la documentation et les scripts de ce dépôt ont été écrits par une intelligence artificielle (Claude, d'Anthropic) à partir des demandes et des retours du propriétaire du projet, qui a dirigé le développement et utilise l'appli. Comme tout logiciel, elle peut contenir des erreurs : elle est fournie telle quelle, sans garantie.
 
@@ -18,23 +18,25 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes 
 - Formats : `mp3`, `m4b`, `m4a`, `ogg`, `opus`, `flac`, `wav`. Les fichiers sont triés en ordre naturel (`2` avant `10`).
 - Pochette : image du dossier (de préférence `cover`, `folder` ou `front`), sinon image intégrée au fichier audio.
 - Recherche de pochettes manquantes sur Internet (voir plus bas).
+- Champ de **recherche** (dès que la bibliothèque compte quelques livres) et choix dans le menu de trier par **écoute récente** plutôt que dans l'ordre de la bibliothèque.
 
 **Lecteur**
-- Recul/avance de 30 s, fichier précédent/suivant, choix d'un fichier du livre.
-- Vitesse de ×0,75 à ×3, minuterie de sommeil (10 à 90 min), saut des silences, gain de volume de +3 à +12 dB (mémorisé par livre).
+- Saut avant/arrière de **10, 15, 30, 45 ou 60 s** (menu → Durée du saut ; aussi utilisé par la notification et Android Auto), fichier précédent/suivant, accès direct à n'importe quel fichier du livre.
+- **Signets** par livre (icône signet dans le lecteur) : ajouter la position actuelle, y revenir, les supprimer.
+- Vitesse de ×0,75 à ×3, minuterie de sommeil (10 à 90 min, avec un fondu sonore de 15 s, ou **fin du fichier en cours**), saut des silences, gain de volume de +3 à +12 dB (mémorisé par livre).
 - Chapitres pour les fichiers `m4b`/`m4a`.
-- **Mini-lecteur** en bas de la bibliothèque dès qu'un livre est chargé : pochette, titre, recul 30 s, lecture/pause, fermer. Un appui rouvre le lecteur sans rien recharger.
+- **Mini-lecteur** en bas de la bibliothèque dès qu'un livre est chargé : pochette, titre, recul (durée du saut), lecture/pause, fermer. Un appui rouvre le lecteur sans rien recharger.
 - **Retour** (bouton ou geste du système, bouton de l'appli) : revient à la bibliothèque, la lecture continue et l'appli reste ouverte. Le ✕ du mini-lecteur arrête la lecture.
 - Lecture en arrière-plan avec notification et commandes de l'écran verrouillé ; utilisable depuis **Android Auto** ; widget d'écran d'accueil.
 
 **Progression et statistiques**
-- Position, vitesse et état « lu » enregistrés par livre, y compris sans l'écran du lecteur (service) ou depuis Android Auto.
+- Position, vitesse et état « lu » enregistrés par livre, y compris sans l'écran du lecteur (service) ou depuis Android Auto. Un livre est marqué « lu » automatiquement quand son dernier fichier se termine, et sa position revient au début.
 - Statistiques d'écoute : aujourd'hui, 7 derniers jours, par livre, et temps gagné grâce à la vitesse.
 - Reprise depuis **Smart AudioBook Player** : les fichiers `position.sabp.dat` sont lus au scan, et `statistics.xml` peut être importé (menu → Importer des statistiques).
 
 ## Installation
 
-1. Ouvre la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et télécharge `JDAudiobook-1.2.0.apk` sur ton téléphone.
+1. Ouvre la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et télécharge `JDAudiobook-1.2.1.apk` sur ton téléphone.
 2. Ouvre le fichier. Android te demandera d'autoriser l'installation depuis cette source (navigateur ou gestionnaire de fichiers) : accepte.
 3. Lance l'appli, ouvre le menu (**icône engrenage**, en haut à droite) → **Choisir le dossier des livres**. Autorise l'accès, y compris en écriture (nécessaire pour la progression et les pochettes).
 
@@ -67,13 +69,14 @@ Un dossier = un livre. Le nom du dossier sert de titre, et de base à la recherc
 
 - L'image est enregistrée en `cover.jpg` dans le dossier du livre (donc retrouvée aux scans suivants), avec une copie dans l'appli en secours si l'écriture dans le dossier est refusée.
 - Pour un livre « introuvable », le bouton **Lien** permet de coller l'adresse de sa page (Audiolib, Audible, Babelio…) ou d'une image : l'appli en récupère la pochette (balise `og:image`).
+- Un livre introuvable n'est pas recherché à nouveau pendant 7 jours (le bouton **Lien** fonctionne toujours).
 - Audiolib est interrogé via l'API de recherche de leur site (`api.hachette.fr`), qui n'est pas documentée : elle peut changer sans prévenir. Le bouton **Lien** reste alors disponible.
 
 ## Fichiers écrits dans tes dossiers
 
 | Fichier | Rôle |
 |---|---|
-| `position.jd.json` | Progression du livre (fichier, position, vitesse, lu/non lu, date), lisible et modifiable à la main. Écrit à la pause, au changement de fichier, toutes les 20 s en lecture et en quittant le lecteur. S'il est plus récent que la sauvegarde locale, il est appliqué à l'ouverture et au rescan. |
+| `position.jd.json` | Progression du livre (fichier, position, vitesse, lu/non lu, date), lisible et modifiable à la main. Écrit à la pause, au changement de fichier, toutes les 60 s en lecture et en quittant le lecteur. S'il est plus récent que la sauvegarde locale, il est appliqué à l'ouverture et au rescan. |
 | `cover.jpg` | Pochette téléchargée. |
 
 Les fichiers de Smart AudioBook Player (`position.sabp.dat`) ne sont jamais modifiés.
@@ -113,13 +116,15 @@ Les textes de l'interface sont dans les ressources Android : `app/src/main/res/v
 | `CoverFetch.kt` | Recherche et téléchargement des pochettes, boîte de dialogue |
 | `About.kt` | Fenêtre « À propos » et vérification de mise à jour à la demande |
 | `SabpImport.kt` | Import depuis Smart AudioBook Player |
+| `Skip.kt`, `Dialogs.kt` | Durée du saut avant/arrière, fenêtres des signets et du saut |
+| `CoverProvider.kt` | Sert les pochettes (URI) à la notification, à Android Auto et au widget |
 | `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Gain de volume, widget, sélecteurs, icônes, thème |
 
 Remarque : les commentaires du code source sont en grande partie en français.
 
 ## Limites connues
 
-- Pas de signets ni d'égaliseur (retirés volontairement).
+- Pas d'égaliseur (retiré volontairement).
 - La recherche de pochettes dépend de services tiers et de leurs réponses ; une mauvaise correspondance reste possible sur des titres très courts ou génériques.
 - Le nom du dossier doit ressembler au titre du livre pour que la recherche aboutisse.
 

@@ -56,6 +56,9 @@ jobs:
           echo "::error::Signing secrets missing (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD). See RELEASING.md."
           exit 1
 
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 

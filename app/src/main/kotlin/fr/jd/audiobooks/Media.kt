@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -152,7 +153,27 @@ object Covers {
     fun localFile(ctx: Context, path: String): java.io.File =
         java.io.File(java.io.File(ctx.filesDir, "covers").also { it.mkdirs() }, Integer.toHexString(path.hashCode()) + ".jpg")
 
-    fun invalidate(path: String) { cache.remove(path); version++ }
+    fun invalidate(path: String, ctx: Context? = null) {
+        cache.remove(path)
+        ctx?.let { artFile(it, path).delete() }
+        version++
+    }
+
+    const val ART_AUTHORITY = "fr.jd.audiobooks.art"
+
+    private fun artFile(ctx: Context, path: String): File =
+        File(File(ctx.filesDir, "art").also { it.mkdirs() }, Integer.toHexString(path.hashCode()) + ".jpg")
+
+    /** URI (servie par CoverProvider) d'une petite copie JPEG de la pochette ; null si le livre n'en a pas.
+     *  Sert d'artwork aux MediaItem à la place de l'image elle-même, recopiée avant dans chaque fichier. */
+    suspend fun artUri(ctx: Context, bk: Book): Uri? = withContext(Dispatchers.IO) {
+        val f = artFile(ctx, bk.path)
+        if (!f.isFile) {
+            val bmp = get(ctx, bk) ?: return@withContext null
+            try { f.writeBytes(jpeg(bmp)) } catch (e: Exception) { return@withContext null }
+        }
+        Uri.parse("content://$ART_AUTHORITY/${f.name}?v=${f.lastModified()}")
+    }
 
     suspend fun get(ctx: Context, bk: Book): Bitmap? = withContext(Dispatchers.IO) {
         cache.get(bk.path) ?: load(ctx, bk)?.also { cache.put(bk.path, it) }

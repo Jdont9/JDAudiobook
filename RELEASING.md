@@ -57,11 +57,11 @@ base64 -i jdaudiobook.jks       # macOS
 3. Commit, then create the matching tag and push it:
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.2.1
+git push origin v1.2.1
 ```
 
-The workflow checks that the tag (`v1.2.0`) matches `versionName`, builds the release APK, verifies its signature, then publishes it under **Releases** as `JDAudiobook-1.2.0.apk`. Without the secrets, a `v*` tag makes the workflow fail with an explicit message.
+The workflow checks that the tag (`v1.2.1`) matches `versionName`, builds the release APK, verifies its signature, then publishes it under **Releases** as `JDAudiobook-1.2.1.apk`. Without the secrets, a `v*` tag makes the workflow fail with an explicit message.
 
 ## Signed build locally (optional)
 

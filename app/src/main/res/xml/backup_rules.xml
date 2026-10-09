@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sauvegarde Android : seulement les positions, vitesses, signets et statistiques (fichier « p »). Ni le cache de la
+     bibliothèque ni les pochettes : les autorisations d'accès au dossier ne sont pas restaurées de toute façon. -->
+<full-backup-content>
+    <include domain="sharedpref" path="p.xml"/>
+</full-backup-content>

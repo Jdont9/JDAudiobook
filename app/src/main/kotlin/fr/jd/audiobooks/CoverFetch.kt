@@ -28,12 +28,29 @@ object CoverFetch {
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
+    private const val MAX_BYTES = 10_000_000 // plafond de téléchargement (un lien collé ne doit pas pouvoir remplir la mémoire)
+
+    private fun readCapped(c: HttpURLConnection): ByteArray? {
+        if (c.contentLengthLong > MAX_BYTES) return null
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        c.inputStream.use { ins ->
+            while (true) {
+                val n = ins.read(buf)
+                if (n < 0) break
+                out.write(buf, 0, n)
+                if (out.size() > MAX_BYTES) return null
+            }
+        }
+        return out.toByteArray()
+    }
+
     private fun http(url: String): ByteArray? = try {
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 8000; readTimeout = 8000; instanceFollowRedirects = true
             setRequestProperty("User-Agent", "JDAudiobook/1.0 (Android)")
         }
-        try { if (c.responseCode in 200..299) c.inputStream.use { it.readBytes() } else null } finally { c.disconnect() }
+        try { if (c.responseCode in 200..299) readCapped(c) else null } finally { c.disconnect() }
     } catch (e: Exception) { null }
 
     private fun json(url: String): JSONObject? = try { http(url)?.let { JSONObject(String(it, Charsets.UTF_8)) } } catch (e: Exception) { null }
@@ -135,7 +152,7 @@ object CoverFetch {
             .map { if (it.all(Char::isDigit)) it.trimStart('0').ifEmpty { "0" } else it }.toSet()
 
     /** Part des mots du titre cherché qui se retrouvent dans le titre trouvé (0..1). */
-    private fun score(query: String, title: String): Double {
+    internal fun score(query: String, title: String): Double {
         val q = tokens(query); if (q.isEmpty()) return 0.0
         val t = tokens(title)
         val base = q.intersect(t).size.toDouble() / q.size
@@ -206,7 +223,7 @@ object CoverFetch {
             }
         } catch (e: Exception) { uri = null }
         if (uri != null) store.updateCover(bk.path, uri)
-        Covers.invalidate(bk.path)
+        Covers.invalidate(bk.path, ctx)
         return uri
     }
 }
@@ -284,9 +301,14 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
                 scope.launch {
                     m.forEachIndexed { i, bk ->
                         index = i
+                        if (store.coverTriedRecently(bk.path)) {
+                            log += Entry(bk, ctx.getString(R.string.not_found_recent, bk.name), false)
+                            return@forEachIndexed
+                        }
                         val r = withContext(Dispatchers.IO) { CoverFetch.find(bk) }
-                        if (r == null) log += Entry(bk, ctx.getString(R.string.not_found_entry, bk.name), false)
+                        if (r == null) { store.markCoverTried(bk.path); log += Entry(bk, ctx.getString(R.string.not_found_entry, bk.name), false) }
                         else {
+                            store.clearCoverTried(bk.path)
                             val uri = withContext(Dispatchers.IO) { CoverFetch.save(ctx, store, bk, r.jpeg) }
                             found++
                             onCover(bk.path, uri)
@@ -324,6 +346,7 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
                         val r = withContext(Dispatchers.IO) { CoverFetch.fromUrl(link) }
                         if (r == null) linkErr = ctx.getString(R.string.no_image_on_link)
                         else {
+                            store.clearCoverTried(bk.path)
                             val uri = withContext(Dispatchers.IO) { CoverFetch.save(ctx, store, bk, r.jpeg) }
                             found++
                             onCover(bk.path, uri)

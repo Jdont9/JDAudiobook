@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import org.json.*
+import java.io.File
+import java.text.Normalizer
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -11,15 +13,26 @@ import java.util.*
 // aligné sur le format utilisé par Smart AudioBook Player pour pouvoir croiser ses données.
 data class Book(val path: String, val name: String, val uris: List<String>, val names: List<String>, val cover: String? = null, val dir: String? = null)
 data class Saved(val index: Int, val pos: Long, val speed: Float, val updated: Long = 0L)
+data class Bookmark(val file: String, val pos: Long, val created: Long)
 data class Stat(val book: String, val day: String, val wall: Long, val content: Long)
+/** Minuscules sans accents : pour la recherche dans la bibliothèque. */
+fun fold(s: String): String = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+
 /** Avancement du scan pendant qu'il tourne : nombre de dossiers déjà explorés et de livres déjà trouvés. */
 data class ScanProgress(val folders: Int, val books: Int)
 
 class Store(private val ctx: Context) {
     private val p = ctx.getSharedPreferences("p", 0)
-    // Le cache de la bibliothèque (toutes les URIs de tous les livres : parfois plusieurs Mo) vit dans son propre
-    // fichier. Avant, il partageait celui des positions : chaque sauvegarde de position réécrivait tout ça.
+    // Ancien emplacement du cache de la bibliothèque (préférences) : lu une seule fois pour migrer vers un fichier.
     private val lib = ctx.getSharedPreferences("lib", 0)
+
+    private companion object {
+        // Copie en mémoire du cache de la bibliothèque, partagée par toutes les instances de Store (appli, service) :
+        // elle évite de relire et de reparser plusieurs Mo de JSON à chaque ouverture ou requête Android Auto.
+        private var memKey: String? = null
+        private var memBooks: List<Book>? = null
+        private val memLock = Any()
+    }
     var root: String? get() = p.getString("root", null); set(v) { p.edit().putString("root", v).apply() }
 
     // 4e champ = horodatage de la sauvegarde (absent des anciennes sauvegardes = 0) : sert à savoir si le fichier
@@ -81,6 +94,32 @@ class Store(private val ctx: Context) {
     fun boost(path: String): Int = p.getInt("boost_$path", 0)
     fun setBoost(path: String, db: Int) = p.edit().putInt("boost_$path", db).apply()
 
+    // Durée du saut avant/arrière (secondes)
+    fun skipSeconds(): Int = p.getInt("skip_s", 30)
+    fun setSkipSeconds(s: Int) = p.edit().putInt("skip_s", s).apply()
+
+    // Dernier livre écouté : le widget s'en sert pour reprendre quand le lecteur est vide.
+    fun lastBook(): String? = p.getString("last_book", null)
+    fun setLastBook(path: String) { if (lastBook() != path) p.edit().putString("last_book", path).apply() }
+
+    // Signets (par livre, repérés par nom de fichier pour survivre à un changement d'ordre)
+    fun bookmarks(path: String): List<Bookmark> = try {
+        val a = JSONArray(p.getString("bm_$path", null) ?: "[]")
+        (0 until a.length()).map { i -> a.getJSONObject(i).let { Bookmark(it.getString("f"), it.getLong("p"), it.getLong("t")) } }
+    } catch (e: Exception) { emptyList() }
+    private fun putBookmarks(path: String, l: List<Bookmark>) {
+        val a = JSONArray()
+        l.forEach { a.put(JSONObject().put("f", it.file).put("p", it.pos).put("t", it.created)) }
+        p.edit().putString("bm_$path", a.toString()).apply()
+    }
+    fun addBookmark(path: String, b: Bookmark) = putBookmarks(path, bookmarks(path) + b)
+    fun removeBookmark(path: String, b: Bookmark) = putBookmarks(path, bookmarks(path).filter { it != b })
+
+    // Pochettes introuvables : on ne relance pas la recherche pour ces livres pendant 7 jours.
+    fun coverTriedRecently(path: String): Boolean = System.currentTimeMillis() - p.getLong("cnf_$path", 0L) < 7L * 24 * 3600 * 1000
+    fun markCoverTried(path: String) = p.edit().putLong("cnf_$path", System.currentTimeMillis()).apply()
+    fun clearCoverTried(path: String) { if (p.contains("cnf_$path")) p.edit().remove("cnf_$path").apply() }
+
     // Statistiques : temps réel écouté et temps de contenu (tenant compte de la vitesse), par livre et par jour.
     // "t|" = mesuré en direct par l'appli ; "ti|" = importé depuis Smart AudioBook Player (granularité mensuelle,
     // jour fixé au 01 du mois), préfixe séparé pour ne jamais écraser une mesure réelle et rester idempotent.
@@ -113,31 +152,55 @@ class Store(private val ctx: Context) {
 
 
     // ---- Cache de la bibliothèque : évite de tout re-scanner à chaque ouverture de l'appli.
-    // Invalidé automatiquement si la racine change (clé incluant l'URI de la racine).
+    // Stocké dans un fichier JSON (filesDir) et gardé en mémoire ; invalidé si la racine change (clé incluant l'URI).
     private fun cacheKey() = "lib_cache_${root ?: ""}"
+    private fun cacheFile() = File(ctx.filesDir, "library_${Integer.toHexString((root ?: "").hashCode())}.json")
+
+    /** Disponible instantanément (sans lire le disque) si la bibliothèque a déjà été chargée dans ce processus. */
+    fun cachedBooksInMemory(): List<Book>? = synchronized(memLock) { if (memKey == cacheKey()) memBooks else null }
+
+    /** À appeler hors du thread principal la première fois (lecture + analyse du fichier). */
     fun cachedBooks(): List<Book>? {
-        var s = lib.getString(cacheKey(), null)
-        if (s == null) { // migration unique depuis l'ancien emplacement
-            val old = p.getString(cacheKey(), null) ?: return null
-            lib.edit().putString(cacheKey(), old).apply()
-            p.edit().remove(cacheKey()).apply()
-            s = old
-        }
-        return try {
-            val a = JSONArray(s)
-            (0 until a.length()).map { i ->
-                val o = a.getJSONObject(i)
-                val uris = o.getJSONArray("u"); val names = o.getJSONArray("n")
-                Book(
-                    o.getString("p"), o.getString("l"),
-                    (0 until uris.length()).map { uris.getString(it) },
-                    (0 until names.length()).map { names.getString(it) },
-                    if (o.has("c")) o.getString("c") else null,
-                    if (o.has("d")) o.getString("d") else null
-                )
-            }
-        } catch (e: Exception) { null }
+        cachedBooksInMemory()?.let { return it }
+        val text = readCacheText() ?: return null
+        val list = parseBooks(text) ?: return null
+        synchronized(memLock) { memKey = cacheKey(); memBooks = list }
+        return list
     }
+
+    private fun readCacheText(): String? {
+        val f = cacheFile()
+        if (f.exists()) return try { f.readText() } catch (e: Exception) { null }
+        // Migration unique depuis les préférences (anciennes versions).
+        val old = lib.getString(cacheKey(), null) ?: p.getString(cacheKey(), null) ?: return null
+        try {
+            writeCacheText(old)
+            lib.edit().remove(cacheKey()).apply(); p.edit().remove(cacheKey()).apply()
+        } catch (e: Exception) { }
+        return old
+    }
+
+    private fun writeCacheText(text: String) {
+        val f = cacheFile(); val tmp = File(f.path + ".tmp")
+        tmp.writeText(text)
+        if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+    }
+
+    private fun parseBooks(s: String): List<Book>? = try {
+        val a = JSONArray(s)
+        (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            val uris = o.getJSONArray("u"); val names = o.getJSONArray("n")
+            Book(
+                o.getString("p"), o.getString("l"),
+                (0 until uris.length()).map { uris.getString(it) },
+                (0 until names.length()).map { names.getString(it) },
+                if (o.has("c")) o.getString("c") else null,
+                if (o.has("d")) o.getString("d") else null
+            )
+        }
+    } catch (e: Exception) { null }
+
     private fun cacheBooks(books: List<Book>) {
         val a = JSONArray()
         books.forEach { bk ->
@@ -148,8 +211,9 @@ class Store(private val ctx: Context) {
                 bk.dir?.let { put("d", it) }
             })
         }
-        lib.edit().putString(cacheKey(), a.toString()).apply()
-        p.edit().remove(cacheKey()).apply()
+        synchronized(memLock) { memKey = cacheKey(); memBooks = books }
+        try { writeCacheText(a.toString()) } catch (e: Exception) { }
+        lib.edit().remove(cacheKey()).apply(); p.edit().remove(cacheKey()).apply()
     }
 
     /** Mémorise une pochette (re)trouvée pour un livre dans le cache de la bibliothèque. */
@@ -162,11 +226,6 @@ class Store(private val ctx: Context) {
      *  seulement s'il n'y en a pas encore. Avant, chaque requête d'un client média relançait un scan SAF
      *  complet en tâche de fond, en concurrence avec l'ouverture du livre dans l'appli. */
     fun library(): List<Book> = cachedBooks() ?: scan()
-
-    // ---- Diagnostic Smart Player : rempli à chaque scan(), lu par l'UI juste après pour savoir
-    // précisément où ça coince (fichier introuvable / illisible / déjà à jour) plutôt que de deviner.
-    var lastSabpDiag: String? = null
-        private set
 
     // ---- Scan de l'arborescence : profondeur illimitée, tout dossier qui contient directement des
     // fichiers audio est un livre (même logique que Smart AudioBook Player). Utilise directement
@@ -183,10 +242,8 @@ class Store(private val ctx: Context) {
         val prev = cachedBooks()?.associateBy { it.path } ?: emptyMap() // ordre des fichiers avant ce scan
         var folders = 0
         var lastTick = 0L
-        var sabpFound = 0
-        var sabpParsed = 0
-        var sabpImported = 0
-        var sabpFinished = 0
+        var sabpListedSeen = false // un position.sabp.dat est déjà apparu dans une liste de dossier
+        var guessTries = 0
 
         data class Kid(val id: String, val name: String, val isDir: Boolean)
 
@@ -209,21 +266,6 @@ class Store(private val ctx: Context) {
         }
         fun ext(name: String) = name.substringAfterLast('.', "").lowercase()
         fun uriFor(id: String) = DocumentsContract.buildDocumentUriUsingTree(treeUri, id).toString()
-
-        var foundDump: String? = null
-        var milleniumDump: String? = null
-        var firstDump: String? = null
-
-        fun dumpFor(label: String, dirId: String, kids: List<Kid>, listed: String?, guessedId: String, errListed: String?, errGuessed: String?, bytes: ByteArray?) = buildString {
-            appendLine("Livre : $label")
-            appendLine("Dossier (id) : $dirId")
-            appendLine("Fichiers vus par le scan (${kids.size}) :")
-            kids.forEach { appendLine("  • ${it.name}${if (it.isDir) " [dossier]" else ""}") }
-            appendLine("position.sabp.dat dans la liste ? ${if (listed != null) "oui" else "non"}")
-            appendLine("URI devinée : $guessedId")
-            appendLine("Ouverture via liste : ${if (listed == null) "n/a" else if (errListed == null && bytes != null) "OK" else errListed ?: "échec sans exception"}")
-            appendLine("Ouverture via URI devinée : ${if (errGuessed == null && bytes != null && listed == null) "OK" else errGuessed ?: (if (listed != null) "non tentée (déjà trouvé via liste)" else "échec sans exception")}")
-        }
 
         fun visit(dirId: String, path: String, label: String) {
             folders++
@@ -249,28 +291,22 @@ class Store(private val ctx: Context) {
                 // Pour la position : on compare à ce que JD a déjà, et on n'importe que si Smart Player est
                 // plus avancé (jamais de recul).
                 val listed = files.firstOrNull { it.name == "position.sabp.dat" }?.let { uriFor(it.id) }
-                val guessedId = "$dirId/position.sabp.dat"
-                val guessed = try { DocumentsContract.buildDocumentUriUsingTree(treeUri, guessedId).toString() } catch (e: Exception) { null }
+                if (listed != null) sabpListedSeen = true
                 var bytes: ByteArray? = null
-                var errListed: String? = null
-                var errGuessed: String? = null
-                if (listed != null && !hasJd) {
-                    try { bytes = resolver.openInputStream(Uri.parse(listed))?.use { it.readBytes() } } catch (e: Exception) { errListed = e.toString() }
+                if (!hasJd) {
+                    if (listed != null) {
+                        bytes = try { resolver.openInputStream(Uri.parse(listed))?.use { it.readBytes() } } catch (e: Exception) { null }
+                    } else if (!sabpListedSeen && guessTries < 15) {
+                        // Certains fournisseurs n'affichent pas ce fichier dans la liste : on tente l'URI directe, mais
+                        // seulement sur les premiers livres (sinon c'est un appel qui échoue par livre, sur toute la bibliothèque).
+                        guessTries++
+                        bytes = try {
+                            resolver.openInputStream(DocumentsContract.buildDocumentUriUsingTree(treeUri, "$dirId/position.sabp.dat"))?.use { it.readBytes() }
+                        } catch (e: Exception) { null }
+                    }
                 }
-                if (bytes == null && guessed != null && !hasJd) {
-                    try { bytes = resolver.openInputStream(Uri.parse(guessed))?.use { it.readBytes() } } catch (e: Exception) { errGuessed = e.toString() }
-                }
-                // Trois vidages ciblés plutôt qu'un seul pris au hasard : le premier dossier où le fichier
-                // est réellement présent dans la liste (pour voir un cas qui marche), le dossier "Millenium"
-                // s'il existe (celui dont on a de vrais exemples de .dat), et sinon le tout premier livre,
-                // en dernier recours.
-                if (foundDump == null && listed != null) foundDump = dumpFor(label, dirId, kids, listed, guessedId, errListed, errGuessed, bytes)
-                if (milleniumDump == null && path.contains("millenium", ignoreCase = true)) milleniumDump = dumpFor(label, dirId, kids, listed, guessedId, errListed, errGuessed, bytes)
-                if (firstDump == null) firstDump = dumpFor(label, dirId, kids, listed, guessedId, errListed, errGuessed, bytes)
                 if (bytes != null) {
-                    sabpFound++
                     SabpImport.parsePosition(bytes)?.let { sp ->
-                        sabpParsed++
                         // L'index brut de Smart Player ne correspond pas forcément à l'ordre alphabétique
                         // qu'on utilise : on retrouve le bon fichier par son nom (présent dans le .dat)
                         // quand c'est possible, et on ne retombe sur l'index brut qu'en dernier recours.
@@ -278,8 +314,8 @@ class Store(private val ctx: Context) {
                         val resolvedIndex = (byName ?: sp.queueIndex).coerceIn(0, audio.lastIndex)
                         val cur = load(path)
                         val more = cur == null || resolvedIndex > cur.index || (resolvedIndex == cur.index && sp.fileMs > cur.pos)
-                        if (more) { save(path, resolvedIndex, sp.fileMs, sp.speed); sabpImported++ }
-                        if (sp.finished) { setFinished(path, true); sabpFinished++ }
+                        if (more) save(path, resolvedIndex, sp.fileMs, sp.speed)
+                        if (sp.finished) setFinished(path, true)
                     }
                 }
             }
@@ -293,9 +329,6 @@ class Store(private val ctx: Context) {
         visit(rootId, "", rootName)
         onProgress?.invoke(ScanProgress(folders, out.size))
         cacheBooks(out)
-        lastSabpDiag = "Smart Player : $sabpFound fichier(s) position.sabp.dat trouvé(s), " +
-            "$sabpParsed décodé(s), $sabpImported position(s) importée(s), $sabpFinished marqué(s) lu(s)\n\n" +
-            (foundDump ?: milleniumDump ?: firstDump ?: "(aucun livre trouvé pour le vidage détaillé)")
         return out
     }
 }

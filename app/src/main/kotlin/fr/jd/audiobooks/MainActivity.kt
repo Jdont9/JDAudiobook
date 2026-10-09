@@ -8,12 +8,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.*
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,9 +45,11 @@ fun fmt(ms: Long): String { val s = ms / 1000; return "%d:%02d:%02d".format(s / 
 class MainActivity : ComponentActivity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
-        if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 0)
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
+            requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 0)
         startService(Intent(this, PlaybackService::class.java))
         val store = Store(this)
+        Skip.load(store)
         Thread { store.cleanupLegacy() }.start() // supprime une fois les anciens réglages égaliseur/signets
         enableEdgeToEdge()
         setContent { JdTheme { Surface(Modifier.fillMaxSize()) { App(store) } } }
@@ -66,11 +71,25 @@ fun App(store: Store) {
     val scope = rememberCoroutineScope()
     // Affichage instantané depuis le cache (s'il existe) pendant qu'un scan frais tourne en arrière-plan ;
     // la liste affichée se met à jour dès que ce scan se termine, sans jamais bloquer l'écran.
-    var books by remember { mutableStateOf(store.cachedBooks() ?: emptyList()) }
+    // (le cache est déjà en mémoire après une rotation ou si le service l'a chargé ; sinon il est lu hors du thread principal)
+    var books by remember { mutableStateOf(store.cachedBooksInMemory() ?: emptyList()) }
+    var cacheLoaded by remember { mutableStateOf(books.isNotEmpty()) }
+    LaunchedEffect(Unit) {
+        if (!cacheLoaded) {
+            val l = withContext(Dispatchers.IO) { store.cachedBooks() }
+            if (books.isEmpty() && l != null) books = l
+            cacheLoaded = true
+        }
+    }
     var scanProgress by remember { mutableStateOf<ScanProgress?>(null) }
-    var cur by remember { mutableStateOf<Book?>(null) }
-    var showStats by remember { mutableStateOf(false) }
-    var showPlayer by remember { mutableStateOf(false) }
+    // État conservé à la rotation de l'écran (et à la recréation de l'activité) : livre ouvert, écran affiché, recherche, tri.
+    var curPath by rememberSaveable { mutableStateOf<String?>(null) }
+    val cur = books.firstOrNull { it.path == curPath }
+    var showStats by rememberSaveable { mutableStateOf(false) }
+    var showPlayer by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var sortRecent by rememberSaveable { mutableStateOf(store.flag("sort_recent")) }
+    var showSkip by remember { mutableStateOf(false) }
     var showCovers by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
@@ -81,8 +100,6 @@ fun App(store: Store) {
         val result = withContext(Dispatchers.IO) { store.scan { sp -> scanProgress = sp } }
         books = result
         scanProgress = null
-        // Diagnostic Smart Player retiré de l'UI maintenant que l'import est confirmé fonctionnel ;
-        // store.lastSabpDiag reste calculé si besoin de redéboguer un jour.
     }
     // Pas de scan automatique à l'ouverture : la liste vient uniquement du cache. Un scan ne se
     // déclenche que sur une action explicite (bouton "Dossier" la première fois, ou "Rescan").
@@ -106,7 +123,7 @@ fun App(store: Store) {
     }
     var openJob by remember { mutableStateOf<Job?>(null) }
     fun open(bk: Book) {
-        cur = bk
+        curPath = bk.path
         showPlayer = true
         openJob?.cancel()
         openJob = scope.launch {
@@ -114,6 +131,11 @@ fun App(store: Store) {
             while (PlaybackService.player == null) {
                 // Filet de sécurité : si le service n'a pas démarré (ou a été arrêté), on le relance.
                 if (waited % 1000 == 0) try { ctx.startService(Intent(ctx, PlaybackService::class.java)) } catch (e: Exception) { }
+                if (waited >= 10_000) { // le service ne démarre pas : on le dit au lieu d'attendre indéfiniment
+                    Toast.makeText(ctx, R.string.service_unavailable, Toast.LENGTH_LONG).show()
+                    curPath = null; showPlayer = false
+                    return@launch
+                }
                 delay(50); waited += 50
             }
             val p = PlaybackService.player!!
@@ -123,7 +145,7 @@ fun App(store: Store) {
             PlaybackService.saveNow()
             // La pochette n'est plus bloquante : si elle est longue à lire (pochette intégrée dans un gros
             // fichier, stockage froid), on lance la lecture sans elle plutôt que de laisser l'écran vide.
-            val artJob = async(Dispatchers.IO) { Covers.get(ctx, bk)?.let { Covers.jpeg(it) } }
+            val artJob = async(Dispatchers.IO) { Covers.artUri(ctx, bk) }
             // Fichier de progression du dossier (position.jd.json) : s'il est plus récent que la sauvegarde locale
             // (livre repris sur un autre appareil, par ex.), il est appliqué avant de lire la position.
             val syncJob = async(Dispatchers.IO) {
@@ -138,7 +160,7 @@ fun App(store: Store) {
                 MediaItem.Builder().setUri(u).setMediaMetadata(
                     MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
                         .setExtras(ProgressFile.extras(bk)).apply {
-                        art?.let { setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
+                        art?.let { setArtworkUri(it) }
                     }.build()).build()
             }, (s?.index ?: 0).coerceIn(0, bk.uris.lastIndex), s?.pos ?: 0)
             // La sélection d'un livre ne doit jamais lancer la lecture automatiquement.
@@ -151,16 +173,22 @@ fun App(store: Store) {
     // Afficher un livre : si le lecteur le contient déjà (mini-lecteur, livre en cours), on rouvre l'écran
     // sans rien recharger ; sinon on le charge.
     fun show(bk: Book) {
-        if (isLoaded(PlaybackService.player, bk)) { cur = bk; showPlayer = true } else open(bk)
+        if (isLoaded(PlaybackService.player, bk)) { curPath = bk.path; showPlayer = true } else open(bk)
     }
     // Retour vers la bibliothèque : la lecture continue (mini-lecteur). Si le livre n'est pas encore chargé, on annule l'ouverture.
     fun leavePlayer() {
         val c = cur
         if (c != null && isLoaded(PlaybackService.player, c)) PlaybackService.saveNow()
-        else { openJob?.cancel(); PlaybackService.player?.pause(); cur = null }
+        else { openJob?.cancel(); PlaybackService.player?.pause(); curPath = null }
         showPlayer = false
     }
     // Geste / bouton retour du système : revient à la bibliothèque au lieu de fermer l'appli.
+    // Après la recréation de l'activité (rotation, processus tué) : si l'écran lecteur était ouvert mais que le lecteur ne
+    // contient plus ce livre, on le recharge.
+    LaunchedEffect(books.isNotEmpty()) {
+        val c = cur
+        if (showPlayer && c != null && !isLoaded(PlaybackService.player, c)) open(c)
+    }
     BackHandler(enabled = showPlayer || showStats) { if (showPlayer) leavePlayer() else showStats = false }
     val b = cur
     when {
@@ -185,6 +213,15 @@ fun App(store: Store) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.import_stats)) }, leadingIcon = { Icon(JdIcons.Download, contentDescription = null) },
                                 onClick = { menuOpen = false; statsPicker.launch(arrayOf("text/xml", "application/xml", "*/*")) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.skip_duration_item, Skip.seconds)) }, leadingIcon = { Icon(JdIcons.Replay, contentDescription = null) },
+                                onClick = { menuOpen = false; showSkip = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(if (sortRecent) R.string.sort_to_library else R.string.sort_to_recent)) },
+                                leadingIcon = { Icon(JdIcons.ArrowDropDown, contentDescription = null) },
+                                onClick = { menuOpen = false; sortRecent = !sortRecent; store.setFlag("sort_recent", sortRecent) }
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.choose_folder)) }, leadingIcon = { Icon(JdIcons.Folder, contentDescription = null) },
@@ -221,7 +258,7 @@ fun App(store: Store) {
             importMsg?.let {
                 Text(it, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
-            if (books.isEmpty() && scanProgress == null && store.root != null) {
+            if (books.isEmpty() && scanProgress == null && store.root != null && cacheLoaded) {
                 Text(stringResource(R.string.no_books_cached), Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
             }
             if (store.root == null) {
@@ -230,12 +267,15 @@ fun App(store: Store) {
 
             val tabs = listOf(stringResource(R.string.tab_all), stringResource(R.string.tab_new), stringResource(R.string.tab_in_progress), stringResource(R.string.tab_finished))
             var tab by remember { mutableStateOf(0) }
-            val shown = when (tab) {
+            val byTab = when (tab) {
                 1 -> books.filter { !store.hasSaved(it.path) && !store.finished(it.path) }
                 2 -> books.filter { store.hasSaved(it.path) && !store.finished(it.path) }
                 3 -> books.filter { store.finished(it.path) }
                 else -> books
             }
+            val q = fold(query.trim())
+            val found = if (q.isEmpty()) byTab else byTab.filter { fold(it.path).contains(q) }
+            val shown = if (sortRecent) found.sortedByDescending { store.load(it.path)?.updated ?: 0L } else found
             if (books.isNotEmpty()) {
                 TabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.surface) {
                     tabs.forEachIndexed { i, t ->
@@ -243,6 +283,10 @@ fun App(store: Store) {
                     }
                 }
             }
+            if (books.size > 6) OutlinedTextField(
+                query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), singleLine = true,
+                placeholder = { Text(stringResource(R.string.search_hint)) }
+            )
             LazyColumn(Modifier.weight(1f)) {
                 items(shown, key = { it.path }) { bk ->
                     val s = store.load(bk.path)
@@ -285,12 +329,13 @@ fun App(store: Store) {
             }
             MiniPlayer(books, onOpen = { show(it) }, onClose = {
                 PlaybackService.player?.let { pl -> pl.pause(); PlaybackService.saveNow(); pl.clearMediaItems() }
-                cur = null
+                curPath = null
             })
             if (showCovers) MissingCoversDialog(books, store, onCover = { path, uri ->
                 if (uri != null) books = books.map { if (it.path == path) it.copy(cover = uri) else it }
             }, onDismiss = { showCovers = false })
             if (showAbout) AboutDialog { showAbout = false }
+            if (showSkip) SkipDialog(onPick = { Skip.seconds = it; store.setSkipSeconds(it); showSkip = false }, onDismiss = { showSkip = false })
         }
     }
 }
@@ -320,10 +365,10 @@ fun MiniPlayer(books: List<Book>, onOpen: (Book) -> Unit, onClose: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton({ p.seekBack() }) {
+                IconButton({ p.skipBack() }) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.back_30), Modifier.size(28.dp))
-                        Text("30", fontSize = 8.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
+                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.back_n, Skip.seconds), Modifier.size(28.dp))
+                        Text("${Skip.seconds}", fontSize = 8.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
                 FilledIconButton({ if (playing) p.pause() else p.play() }, Modifier.size(44.dp)) {
@@ -344,7 +389,9 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
     var chaps by remember { mutableStateOf(listOf<Chap>()) }
     var speedMenu by remember { mutableStateOf(false) }
     var sleepMenu by remember { mutableStateOf(false) }
-    var skipSilence by remember { mutableStateOf(false) }
+    var skipSilence by remember { mutableStateOf(PlaybackService.player?.skipSilenceEnabled ?: false) }
+    var drag by remember { mutableStateOf<Float?>(null) }
+    var showBookmarks by remember { mutableStateOf(false) }
     var finished by remember { mutableStateOf(store.finished(bk.path)) }
     var durs by remember { mutableStateOf(store.durations(bk)) }
     var probing by remember { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -432,6 +479,9 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             BackButton(back)
             Spacer(Modifier.weight(1f))
+            IconButton({ showBookmarks = true }) {
+                Icon(JdIcons.Bookmark, contentDescription = stringResource(R.string.bookmarks), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             IconButton(
                 { finished = !finished; store.setFinished(bk.path, finished); PlaybackService.saveNow() },
                 colors = IconButtonDefaults.iconButtonColors(
@@ -474,11 +524,16 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 Text(bk.names.getOrElse(fi) { "" } + "  (${fi + 1}/${bk.uris.size})", Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Icon(JdIcons.ArrowDropDown, contentDescription = stringResource(R.string.choose_file))
             }
+            if (showBookmarks) BookmarksDialog(bk, store, p) { showBookmarks = false }
             if (showFiles) FilePickerDialog(bk, durs, fi, store, onPick = { p.seekTo(it, 0); showFiles = false }, onDismiss = { showFiles = false })
             if (chaps.isNotEmpty()) Text(stringResource(R.string.chapter_of, ci + 1, chaps.size, chaps[ci].title), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
             val dur = p.duration.coerceAtLeast(1)
-            Slider(p.currentPosition.toFloat() / dur, { p.seekTo((it * dur).toLong()) })
-            Row { Text(fmt(p.currentPosition), Modifier.weight(1f)); Text(fmt(dur)) }
+            // Pendant le glissement on ne déplace que le curseur ; la lecture saute une seule fois au relâchement.
+            Slider(
+                drag ?: (p.currentPosition.toFloat() / dur), { drag = it },
+                onValueChangeFinished = { drag?.let { d -> p.seekTo((d * dur).toLong()) }; drag = null }
+            )
+            Row { Text(fmt(drag?.let { (it * dur).toLong() } ?: p.currentPosition), Modifier.weight(1f)); Text(fmt(dur)) }
             Text(
                 when {
                     total > 0 && elapsed >= 0 -> stringResource(R.string.listened_of, fmt(elapsed), fmt(total), (elapsed * 100 / total).coerceIn(0, 100), fmt((total - elapsed).coerceAtLeast(0)))
@@ -493,19 +548,19 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                     if (chaps.isEmpty()) p.seekToPreviousMediaItem()
                     else p.seekTo(if (p.currentPosition - chaps[ci].startMs > 3000) chaps[ci].startMs else chaps.getOrNull(ci - 1)?.startMs ?: 0)
                 }) { Icon(JdIcons.SkipPrevious, contentDescription = stringResource(R.string.previous), Modifier.size(28.dp)) }
-                IconButton({ p.seekBack() }) {
+                IconButton({ p.skipBack() }) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.back_30), Modifier.size(34.dp))
-                        Text("30", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
+                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.back_n, Skip.seconds), Modifier.size(34.dp))
+                        Text("${Skip.seconds}", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
                     }
                 }
                 FilledIconButton({ if (playing) p.pause() else p.play() }, Modifier.size(64.dp)) {
                     Icon(if (playing) JdIcons.Pause else JdIcons.Play, contentDescription = if (playing) stringResource(R.string.pause) else stringResource(R.string.play), Modifier.size(36.dp))
                 }
-                IconButton({ p.seekForward() }) {
+                IconButton({ p.skipForward() }) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.forward_30), Modifier.size(34.dp).graphicsLayer { scaleX = -1f })
-                        Text("30", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
+                        Icon(JdIcons.Replay, contentDescription = stringResource(R.string.forward_n, Skip.seconds), Modifier.size(34.dp).graphicsLayer { scaleX = -1f })
+                        Text("${Skip.seconds}", fontSize = 9.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(top = 3.dp))
                     }
                 }
                 IconButton({
@@ -527,13 +582,15 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                     val sleepBtn: @Composable () -> Unit = {
                         Icon(JdIcons.Moon, contentDescription = stringResource(R.string.sleep_timer), Modifier.size(20.dp))
                         if (left > 0) Text(fmt(left), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
+                        else if (Sleep.untilFileEnd) Text(stringResource(R.string.sleep_file_short), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
                     }
-                    if (left > 0) FilledTonalButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
+                    if (left > 0 || Sleep.untilFileEnd) FilledTonalButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
                     else OutlinedButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
                     DropdownMenu(sleepMenu, { sleepMenu = false }) {
                         listOf(0, 10, 15, 30, 45, 60, 90).forEach { m ->
                             DropdownMenuItem({ Text(if (m == 0) stringResource(R.string.off) else stringResource(R.string.minutes_short, m)) }, { Sleep.set(m); sleepMenu = false })
                         }
+                        DropdownMenuItem({ Text(stringResource(R.string.sleep_end_of_file)) }, { Sleep.fileEnd(); sleepMenu = false })
                     }
                 }
                 FilterChip(

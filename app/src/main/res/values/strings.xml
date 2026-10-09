@@ -19,8 +19,8 @@
     <string name="status_finished">Finished</string>
     <string name="resume_at">Resume %1$s/%2$s at %3$s</string>
     <string name="n_files">%1$s file(s)</string>
-    <string name="back_30">Back 30 seconds</string>
-    <string name="forward_30">Forward 30 seconds</string>
+    <string name="back_n">Back %1$s seconds</string>
+    <string name="forward_n">Forward %1$s seconds</string>
     <string name="pause">Pause</string>
     <string name="play">Play</string>
     <string name="close_player">Close player</string>
@@ -84,4 +84,17 @@
     <string name="update_error">Couldn\'t check for updates. Check your internet connection.</string>
     <string name="open_download_page">Open the download page</string>
     <string name="about_manual_note">Updates are only checked when you tap the button — never automatically.</string>
+    <string name="skip_duration">Skip duration</string>
+    <string name="skip_duration_item">Skip duration: %1$s s</string>
+    <string name="seconds_short">%1$s s</string>
+    <string name="sort_to_recent">Sort by recently played</string>
+    <string name="sort_to_library">Sort by library order</string>
+    <string name="search_hint">Search</string>
+    <string name="bookmarks">Bookmarks</string>
+    <string name="add_bookmark">＋ Add a bookmark here</string>
+    <string name="no_bookmarks">No bookmarks yet.</string>
+    <string name="sleep_end_of_file">End of the current file</string>
+    <string name="sleep_file_short">file</string>
+    <string name="service_unavailable">The playback service could not start. Please try again.</string>
+    <string name="not_found_recent">✗ %1$s: not found (already searched recently)</string>
 </resources>

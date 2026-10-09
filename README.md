@@ -4,7 +4,7 @@
 
 A simple, fast audiobook player for Android that plays your files (MP3, M4B…) straight from a folder on your phone. No account, no ads, no tracking.
 
-Written in Kotlin with Jetpack Compose and Media3. Version **1.2.0**. The app is available in **English and French** (it follows your phone's language).
+Written in Kotlin with Jetpack Compose and Media3. Version **1.2.1**. The app is available in **English and French** (it follows your phone's language).
 
 > 🤖 **Built by an AI.** The code, documentation and scripts in this repository were written by an artificial intelligence (Claude, by Anthropic) from the requests and feedback of the project's owner, who directed the development and uses the app. Like any software it may contain bugs; it is provided as is, without warranty.
 
@@ -18,23 +18,25 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.2.0**. The app is
 - Formats: `mp3`, `m4b`, `m4a`, `ogg`, `opus`, `flac`, `wav`. Files are sorted in natural order (`2` before `10`).
 - Cover art: an image in the folder (preferably named `cover`, `folder` or `front`), otherwise the artwork embedded in the audio file.
 - Missing covers can be searched for on the internet (see below).
+- **Search** field (as soon as the library has more than a few books) and a menu choice to sort by **recently played** instead of library order.
 
 **Player**
-- ±30 s seek, previous/next file, jump to any file of the book.
-- Speed from ×0.75 to ×3, sleep timer (10 to 90 min), silence skipping, volume boost from +3 to +12 dB (remembered per book).
+- Seek back/forward by **10, 15, 30, 45 or 60 s** (menu → Skip duration; also used by the notification and Android Auto), previous/next file, jump to any file of the book.
+- **Bookmarks** per book (bookmark icon in the player): add the current position, jump back to one, delete it.
+- Speed from ×0.75 to ×3, sleep timer (10 to 90 min, with a 15 s volume fade-out, or **end of the current file**), silence skipping, volume boost from +3 to +12 dB (remembered per book).
 - Chapters for `m4b`/`m4a` files.
-- **Mini player** at the bottom of the library whenever a book is loaded: cover, title, back 30 s, play/pause, close. Tapping it reopens the player without reloading anything.
+- **Mini player** at the bottom of the library whenever a book is loaded: cover, title, back (skip duration), play/pause, close. Tapping it reopens the player without reloading anything.
 - **Back** (system button, gesture, or the in-app button) returns to the library: playback keeps going and the app stays open. The ✕ on the mini player stops playback.
 - Background playback with a notification and lock-screen controls; usable from **Android Auto**; home-screen widget.
 
 **Progress and statistics**
-- Position, speed and "finished" state are saved per book, even when the player screen is closed (service) or when driven from Android Auto.
+- Position, speed and "finished" state are saved per book (a book is marked finished automatically when its last file ends, and its position goes back to the start), even when the player screen is closed (service) or when driven from Android Auto.
 - Listening statistics: today, last 7 days, per book, and time saved thanks to speed.
 - Migration from **Smart AudioBook Player**: `position.sabp.dat` files are read during the scan, and `statistics.xml` can be imported (menu → Import statistics).
 
 ## Install
 
-1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.2.0.apk` on your phone.
+1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.2.1.apk` on your phone.
 2. Open the file. Android will ask you to allow installs from that source (your browser or file manager): accept.
 3. Launch the app, open the menu (**gear icon**, top right) → **Choose the books folder**. Grant access, including write access (needed for progress and covers).
 
@@ -67,13 +69,14 @@ One folder = one book. The folder name is used as the title and as the basis for
 
 - The image is saved as `cover.jpg` in the book's folder (so it is found again on later scans), with a backup copy inside the app in case writing to the folder is refused.
 - For a book that is "not found", the **Link** button lets you paste the address of its page (Audiolib, Audible, Babelio…) or of an image: the app picks up the cover (`og:image` tag).
+- A book that was not found is not searched again for 7 days (the **Link** button always works).
 - Audiolib is queried through the site's own search API (`api.hachette.fr`), which is undocumented and may change without notice. The **Link** button remains available as a fallback.
 
 ## Files written in your folders
 
 | File | Purpose |
 |---|---|
-| `position.jd.json` | The book's progress (file, position, speed, finished or not, date); human-readable and hand-editable. Written on pause, on file change, every 20 s while playing and when leaving the player. If it is newer than the local save, it is applied when the book is opened and on rescan. |
+| `position.jd.json` | The book's progress (file, position, speed, finished or not, date); human-readable and hand-editable. Written on pause, on file change, every 60 s while playing and when leaving the player. If it is newer than the local save, it is applied when the book is opened and on rescan. |
 | `cover.jpg` | Downloaded cover. |
 
 Smart AudioBook Player's `position.sabp.dat` files are never modified.
@@ -113,13 +116,15 @@ User-facing text lives in Android string resources: `app/src/main/res/values/str
 | `CoverFetch.kt` | Cover search and download, dialog |
 | `About.kt` | About dialog and on-demand update check |
 | `SabpImport.kt` | Import from Smart AudioBook Player |
+| `Skip.kt`, `Dialogs.kt` | Skip duration, bookmark and skip dialogs |
+| `CoverProvider.kt` | Serves covers by URI to the notification, Android Auto and the widget |
 | `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Volume boost, widget, pickers, icons, theme |
 
 Note: source-code comments are mostly in French.
 
 ## Known limitations
 
-- No bookmarks and no equalizer (removed on purpose).
+- No equalizer (removed on purpose).
 - Cover search depends on third-party services and what they return; a wrong match is still possible for very short or generic titles.
 - The folder name has to look like the book's title for the cover search to succeed.
 

@@ -23,6 +23,7 @@ class JdWidget : AppWidgetProvider() {
             val p = PlaybackService.player
             val title = p?.mediaMetadata?.title?.toString() ?: "JD Audiobook Reader"
             v.setTextViewText(R.id.w_title, title)
+            p?.mediaMetadata?.artworkUri?.let { v.setImageViewUri(R.id.w_cover, it) }
             v.setImageViewResource(R.id.w_play, if (p?.playWhenReady == true) R.drawable.ic_pause else R.drawable.ic_play)
             fun pi(action: String) = PendingIntent.getService(ctx, action.hashCode(),
                 Intent(ctx, PlaybackService::class.java).setAction(action),

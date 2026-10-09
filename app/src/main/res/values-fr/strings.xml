@@ -19,8 +19,8 @@
     <string name="status_finished">Terminé</string>
     <string name="resume_at">Reprise %1$s/%2$s à %3$s</string>
     <string name="n_files">%1$s fichier(s)</string>
-    <string name="back_30">Reculer de 30 secondes</string>
-    <string name="forward_30">Avancer de 30 secondes</string>
+    <string name="back_n">Reculer de %1$s secondes</string>
+    <string name="forward_n">Avancer de %1$s secondes</string>
     <string name="pause">Pause</string>
     <string name="play">Lire</string>
     <string name="close_player">Fermer le lecteur</string>
@@ -84,4 +84,17 @@
     <string name="update_error">Impossible de vérifier les mises à jour. Vérifie ta connexion Internet.</string>
     <string name="open_download_page">Ouvrir la page de téléchargement</string>
     <string name="about_manual_note">Les mises à jour ne sont vérifiées que lorsque tu appuies sur le bouton, jamais automatiquement.</string>
+    <string name="skip_duration">Durée du saut</string>
+    <string name="skip_duration_item">Durée du saut : %1$s s</string>
+    <string name="seconds_short">%1$s s</string>
+    <string name="sort_to_recent">Trier par écoute récente</string>
+    <string name="sort_to_library">Trier selon la bibliothèque</string>
+    <string name="search_hint">Rechercher</string>
+    <string name="bookmarks">Signets</string>
+    <string name="add_bookmark">＋ Ajouter un signet ici</string>
+    <string name="no_bookmarks">Aucun signet pour l\'instant.</string>
+    <string name="sleep_end_of_file">Fin du fichier en cours</string>
+    <string name="sleep_file_short">fichier</string>
+    <string name="service_unavailable">Le service de lecture n\'a pas pu démarrer. Réessaie.</string>
+    <string name="not_found_recent">✗ %1$s : introuvable (déjà cherché récemment)</string>
 </resources>
