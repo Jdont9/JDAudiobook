@@ -2,6 +2,14 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.3.3
+**Corrections**
+- Le recul automatique à la reprise fonctionne maintenant après un redémarrage de l'appli ou du téléphone, et quand on ouvre un livre depuis la bibliothèque. L'heure de la dernière écoute est relue dans la position enregistrée (elle n'était gardée qu'en mémoire, donc perdue). Une pause de plus d'un jour recule de 30 s. La reprise depuis Android Auto, le widget et le Bluetooth suit la même règle.
+
+**Changements**
+- L'APK release est allégé par R8 (téléchargement plus petit, sans obfuscation du code).
+- Interne : `MainActivity.kt` découpé en `LibraryScreen.kt`, `PlayerScreen.kt` et `StatsScreen.kt` (aucun changement visible).
+
 ## 1.3.2
 **Corrections**
 - Les chapitres séparés de moins d'une seconde sont ignorés. Certains MP3 portent des chapitres dont les débuts tombent tous dans la première seconde (affichés 0:00:00) ; la 1.3.1 ne repérait que les instants identiques, si bien qu'un tel fichier affichait encore « Chapitre 2/2 » et une liste de chapitres. Il se comporte maintenant comme le fichier sans chapitres qu'il est.

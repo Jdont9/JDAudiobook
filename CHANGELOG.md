@@ -2,6 +2,14 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.3.3
+**Fixes**
+- Resume rewind now works after the app or the phone was restarted, and when you open a book from the library. The time of your last listening is read from the saved position (it was only kept in memory, so it was lost). A pause of more than a day now rewinds 30 s. Android Auto, the widget and Bluetooth resume use the same rule.
+
+**Changes**
+- The release APK is shrunk with R8 (smaller download, no code obfuscation).
+- Internal: `MainActivity.kt` split into `LibraryScreen.kt`, `PlayerScreen.kt` and `StatsScreen.kt` (no visible change).
+
 ## 1.3.2
 **Fixes**
 - Chapters less than one second apart are ignored. Some MP3s carry chapters whose start times all fall within the first second (shown as 0:00:00); 1.3.1 only caught identical times, so such a file still showed "Chapter 2/2" and a chapter list. Such a file now behaves as the unchaptered file it is.

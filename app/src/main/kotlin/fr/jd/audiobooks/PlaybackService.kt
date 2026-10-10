@@ -65,12 +65,16 @@ class PlaybackService : MediaLibraryService() {
 
     companion object {
         var player: ExoPlayer? = null
-        // Suivi de la pause pour le retour en arrière automatique. En compagnon (pas un champ d'instance)
-        // pour pouvoir être remis à zéro depuis l'extérieur (MainActivity.open()) : sans ça, ouvrir un tout
-        // nouveau livre juste après avoir mis un autre livre en pause déclenchait le recul sur la position
-        // qu'on vient d'importer/reprendre, l'écrasant par une position plus ancienne.
+        // Suivi de la pause pour le retour en arrière automatique : heure MURALE (ms) de la dernière pause, pour qu'elle
+        // survive à un redémarrage du service ou de l'appli (elle est relue dans la position sauvegardée, voir
+        // markFreshStart). En compagnon (pas un champ d'instance) pour pouvoir être réglée depuis l'extérieur
+        // (MainActivity.open()) : on réarme avec l'heure de la dernière écoute DU livre ouvert, jamais celle d'un autre
+        // livre (sinon ouvrir un nouveau livre juste après en avoir mis un autre en pause reculait la position qu'on
+        // vient d'importer/reprendre).
         private var pausedAt = 0L
-        fun markFreshStart() { pausedAt = 0L }
+        private var armedAt = 0L
+        /** since : heure (ms) de la dernière écoute du livre qu'on vient de charger, 0 = pas de recul automatique. */
+        fun markFreshStart(since: Long = 0L) { pausedAt = since; armedAt = SystemClock.elapsedRealtime() }
         private var self: PlaybackService? = null
         /** Sauvegarde immédiate (position + fichier du dossier), p. ex. après « Marquer comme lu ». */
         fun saveNow() { self?.persist(true) }
@@ -120,7 +124,7 @@ class PlaybackService : MediaLibraryService() {
                 val bk = withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } } ?: return@launch
                 val l = loadBook(bk)
                 val pl = player ?: return@launch
-                markFreshStart()
+                markFreshStart(store.load(bk.path)?.updated ?: 0L) // reprise (widget, Bluetooth) : recul selon l'absence
                 pl.setMediaItems(l.items, l.index, l.pos)
                 pl.setPlaybackSpeed(safeSpeed(l.speed))
                 pl.prepare()
@@ -244,7 +248,7 @@ class PlaybackService : MediaLibraryService() {
                 if (bk == null) MediaItemsWithStartPosition(ImmutableList.of(), 0, 0)
                 else {
                     val l = loadBook(bk, idx)
-                    markFreshStart() // nouveau livre choisi depuis Android Auto : pas de recul automatique
+                    markFreshStart(store.load(bk.path)?.updated ?: 0L) // recul selon le temps écoulé depuis la dernière écoute
                     MediaItemsWithStartPosition(ImmutableList.copyOf(l.items), l.index, l.pos)
                 }
             }
@@ -284,19 +288,21 @@ class PlaybackService : MediaLibraryService() {
             override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
                     // Déplacement manuel pendant la pause (chapitre, curseur) : la reprise ne doit pas reculer encore.
-                    if (!p.playWhenReady) pausedAt = 0L
+                    if (!p.playWhenReady && reason == Player.DISCONTINUITY_REASON_SEEK &&
+                        SystemClock.elapsedRealtime() - armedAt > 2000) pausedAt = 0L
                     h.removeCallbacks(seekPersist); h.postDelayed(seekPersist, 1000)
                 }
             }
             override fun onPlayWhenReadyChanged(pwr: Boolean, reason: Int) {
                 // Minuterie « fin du fichier » arrivée au bout, ou lecture reprise pendant le fondu : minuterie terminée.
                 if ((!pwr && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) || (pwr && Sleep.fading)) Sleep.cancel()
-                val now = SystemClock.elapsedRealtime()
+                val now = System.currentTimeMillis()
                 if (!pwr) { pausedAt = now; persist(true) }
                 else if (pausedAt > 0) {
-                    val s = (now - pausedAt) / 1000
-                    val back = when { s < 5 -> 0L; s < 300 -> 3_000L; s < 3600 -> 10_000L; else -> 20_000L }
+                    val s = ((now - pausedAt) / 1000).coerceAtLeast(0)
+                    val back = when { s < 5 -> 0L; s < 300 -> 3_000L; s < 3600 -> 10_000L; s < 86_400 -> 20_000L; else -> 30_000L }
                     if (back > 0) p.seekTo((p.currentPosition - back).coerceAtLeast(0))
+                    pausedAt = 0L // un seul recul par pause
                 }
             }
         })

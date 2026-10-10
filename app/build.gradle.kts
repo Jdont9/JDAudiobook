@@ -18,8 +18,8 @@ android {
         applicationId = "fr.jd.audiobooks"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.3.2"
+        versionCode = 9
+        versionName = "1.3.3"
     }
     signingConfigs {
         create("release") {
@@ -33,7 +33,11 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 : retire le code inutilisé de Compose/Media3/Guava (APK nettement plus léger). Pas d'obfuscation
+            // (le projet est libre ; les traces d'erreur restent lisibles) : voir proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // With no key provided, the release APK is left unsigned (not installable) rather than signed with a debug key.
             signingConfig = if (keystorePath != null) signingConfigs.getByName("release") else null
         }

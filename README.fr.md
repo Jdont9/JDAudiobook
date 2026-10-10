@@ -4,7 +4,7 @@
 
 Lecteur de livres audio pour Android, simple et rapide, qui lit directement vos fichiers (MP3, M4B…) depuis un dossier de votre téléphone. Pas de compte, pas de publicité, pas de suivi.
 
-Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.3.2**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
+Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.3.3**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
 
 > 🤖 **Projet réalisé par une IA.** Le code, la documentation et les scripts de ce dépôt ont été écrits par une intelligence artificielle (Claude, d'Anthropic) à partir des demandes et des retours du propriétaire du projet, qui a dirigé le développement et utilise l'appli. Comme tout logiciel, elle peut contenir des erreurs : elle est fournie telle quelle, sans garantie.
 
@@ -36,7 +36,7 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement vos 
 
 ## Installation
 
-1. Ouvrez la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et téléchargez `JDAudiobook-1.3.2.apk` sur votre téléphone.
+1. Ouvrez la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et téléchargez `JDAudiobook-1.3.3.apk` sur votre téléphone.
 2. Ouvrez le fichier. Android vous demandera d'autoriser l'installation depuis cette source (navigateur ou gestionnaire de fichiers) : acceptez.
 3. Lancez l'appli, ouvrez le menu (**icône engrenage**, en haut à droite) → **Choisir le dossier des livres**. Autorisez l'accès, y compris en écriture (nécessaire pour la progression et les pochettes).
 
@@ -110,7 +110,8 @@ Les textes de l'interface sont dans les ressources Android : `app/src/main/res/v
 
 | Fichier | Contenu |
 |---|---|
-| `MainActivity.kt` | Écrans (bibliothèque, lecteur, mini-lecteur, statistiques) et navigation |
+| `MainActivity.kt` | Activité, état partagé et navigation |
+| `LibraryScreen.kt`, `PlayerScreen.kt`, `StatsScreen.kt` | Écrans : bibliothèque (+ mini-lecteur), lecteur, statistiques |
 | `PlaybackService.kt` | Lecture en arrière-plan, session média, Android Auto, sauvegarde de la progression, minuterie de sommeil |
 | `Store.kt` | Dossier racine, scan de la bibliothèque, cache, statistiques |
 | `Progress.kt` | Fichier `position.jd.json` |
