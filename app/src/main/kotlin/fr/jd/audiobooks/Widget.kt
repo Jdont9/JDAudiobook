@@ -21,12 +21,13 @@ class JdWidget : AppWidgetProvider() {
         private fun render(ctx: Context, mgr: AppWidgetManager, id: Int) {
             val v = RemoteViews(ctx.packageName, R.layout.widget_jd)
             val p = PlaybackService.player
-            val title = p?.mediaMetadata?.title?.toString() ?: "JD Audiobook Reader"
+            val title = p?.mediaMetadata?.title?.toString() ?: ctx.getString(R.string.app_name)
             v.setTextViewText(R.id.w_title, title)
             p?.mediaMetadata?.artworkUri?.let { v.setImageViewUri(R.id.w_cover, it) }
             v.setImageViewResource(R.id.w_play, if (p?.playWhenReady == true) R.drawable.ic_pause else R.drawable.ic_play)
+            val token = Store(ctx).serviceToken()
             fun pi(action: String) = PendingIntent.getService(ctx, action.hashCode(),
-                Intent(ctx, PlaybackService::class.java).setAction(action),
+                Intent(ctx, PlaybackService::class.java).setAction(action).putExtra(PlaybackService.EXTRA_TOKEN, token),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             v.setOnClickPendingIntent(R.id.w_play, pi(PlaybackService.ACTION_PLAY_PAUSE))
             v.setOnClickPendingIntent(R.id.w_prev, pi(PlaybackService.ACTION_PREV))

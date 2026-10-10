@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
         startService(Intent(this, PlaybackService::class.java))
         val store = Store(this)
         Skip.load(store)
-        Thread { store.cleanupLegacy() }.start() // supprime une fois les anciens réglages égaliseur/signets
+        Thread { store.cleanupLegacy(); store.compactStats() }.start() // anciens réglages égaliseur/signets ; vieilles stats regroupées par mois
         enableEdgeToEdge()
         setContent { JdTheme { Surface(Modifier.fillMaxSize()) { App(store) } } }
     }
@@ -106,8 +106,15 @@ fun App(store: Store) {
 
     val picker = rememberLauncherForActivityResult(OpenTreeRW()) { u ->
         if (u != null) {
+            val old = store.root
             try { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
             catch (e: Exception) { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            // Ancien dossier abandonné : on rend l'autorisation (Android en limite le nombre).
+            if (old != null && old != u.toString()) try {
+                ctx.contentResolver.releasePersistableUriPermission(
+                    android.net.Uri.parse(old), Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (e: Exception) { logw("ancienne autorisation non rendue", e) }
             store.root = u.toString()
             books = emptyList()
             scope.launch { rescan() }
@@ -127,47 +134,56 @@ fun App(store: Store) {
         showPlayer = true
         openJob?.cancel()
         openJob = scope.launch {
-            var waited = 0
-            while (PlaybackService.player == null) {
-                // Filet de sécurité : si le service n'a pas démarré (ou a été arrêté), on le relance.
-                if (waited % 1000 == 0) try { ctx.startService(Intent(ctx, PlaybackService::class.java)) } catch (e: Exception) { }
-                if (waited >= 10_000) { // le service ne démarre pas : on le dit au lieu d'attendre indéfiniment
-                    Toast.makeText(ctx, R.string.service_unavailable, Toast.LENGTH_LONG).show()
-                    curPath = null; showPlayer = false
-                    return@launch
+            // Une exception ici (fichier de progression bizarre, lecteur indisponible…) ne doit pas faire planter l'appli.
+            try {
+                var waited = 0
+                while (PlaybackService.player == null) {
+                    // Filet de sécurité : si le service n'a pas démarré (ou a été arrêté), on le relance.
+                    if (waited % 1000 == 0) try { ctx.startService(Intent(ctx, PlaybackService::class.java)) } catch (e: Exception) { logw("démarrage du service", e) }
+                    if (waited >= 10_000) { // le service ne démarre pas : on le dit au lieu d'attendre indéfiniment
+                        Toast.makeText(ctx, R.string.service_unavailable, Toast.LENGTH_LONG).show()
+                        curPath = null; showPlayer = false
+                        return@launch
+                    }
+                    delay(50); waited += 50
                 }
-                delay(50); waited += 50
+                val p = PlaybackService.player!!
+                // On arrête d'abord la lecture en cours et on enregistre tout de suite l'ancien livre à sa vraie position
+                // (avant que la playlist ne soit remplacée, et avant de relire la position du livre qu'on ouvre).
+                p.playWhenReady = false
+                PlaybackService.saveNow()
+                // La pochette n'est plus bloquante : si elle est longue à lire (pochette intégrée dans un gros
+                // fichier, stockage froid), on lance la lecture sans elle plutôt que de laisser l'écran vide.
+                val artJob = async(Dispatchers.IO) { Covers.artUri(ctx, bk) }
+                // Fichier de progression du dossier (position.jd.json) : s'il est plus récent que la sauvegarde locale
+                // (livre repris sur un autre appareil, par ex.), il est appliqué avant de lire la position.
+                val syncJob = async(Dispatchers.IO) {
+                    ProgressFile.read(ctx, store.root, bk)?.let { store.applyProgressFile(bk.path, bk.names, it) }
+                }
+                val art = withTimeoutOrNull(2000) { artJob.await() }
+                withTimeoutOrNull(1500) { syncJob.await() }
+                // Lecture de la position seulement ici : l'écran lecteur n'écrit rien tant que le livre n'est pas chargé.
+                val s = store.load(bk.path)
+                PlaybackService.markFreshStart() // on ouvre un livre choisi explicitement : jamais de recul automatique ici
+                p.setMediaItems(bk.uris.mapIndexed { i, u ->
+                    MediaItem.Builder().setUri(u).setMediaMetadata(
+                        MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
+                            .setExtras(ProgressFile.extras(bk)).apply {
+                            art?.let { setArtworkUri(it) }
+                        }.build()).build()
+                }, (s?.index ?: 0).coerceIn(0, bk.uris.lastIndex), s?.pos ?: 0)
+                // La sélection d'un livre ne doit jamais lancer la lecture automatiquement.
+                // On prépare le lecteur sur la position sauvegardée, puis seul le bouton « Lire »
+                // (ou une commande externe comme Android Auto) démarre effectivement la lecture.
+                p.setPlaybackSpeed(safeSpeed(s?.speed ?: 1f))
+                p.prepare()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logw("ouverture du livre ${bk.path}", e)
+                Toast.makeText(ctx, R.string.open_failed, Toast.LENGTH_LONG).show()
+                curPath = null; showPlayer = false
             }
-            val p = PlaybackService.player!!
-            // On arrête d'abord la lecture en cours et on enregistre tout de suite l'ancien livre à sa vraie position
-            // (avant que la playlist ne soit remplacée, et avant de relire la position du livre qu'on ouvre).
-            p.playWhenReady = false
-            PlaybackService.saveNow()
-            // La pochette n'est plus bloquante : si elle est longue à lire (pochette intégrée dans un gros
-            // fichier, stockage froid), on lance la lecture sans elle plutôt que de laisser l'écran vide.
-            val artJob = async(Dispatchers.IO) { Covers.artUri(ctx, bk) }
-            // Fichier de progression du dossier (position.jd.json) : s'il est plus récent que la sauvegarde locale
-            // (livre repris sur un autre appareil, par ex.), il est appliqué avant de lire la position.
-            val syncJob = async(Dispatchers.IO) {
-                ProgressFile.read(ctx, store.root, bk)?.let { store.applyProgressFile(bk.path, bk.names, it) }
-            }
-            val art = withTimeoutOrNull(2000) { artJob.await() }
-            withTimeoutOrNull(1500) { syncJob.await() }
-            // Lecture de la position seulement ici : l'écran lecteur n'écrit rien tant que le livre n'est pas chargé.
-            val s = store.load(bk.path)
-            PlaybackService.markFreshStart() // on ouvre un livre choisi explicitement : jamais de recul automatique ici
-            p.setMediaItems(bk.uris.mapIndexed { i, u ->
-                MediaItem.Builder().setUri(u).setMediaMetadata(
-                    MediaMetadata.Builder().setTitle(bk.names[i]).setArtist(bk.name)
-                        .setExtras(ProgressFile.extras(bk)).apply {
-                        art?.let { setArtworkUri(it) }
-                    }.build()).build()
-            }, (s?.index ?: 0).coerceIn(0, bk.uris.lastIndex), s?.pos ?: 0)
-            // La sélection d'un livre ne doit jamais lancer la lecture automatiquement.
-            // On prépare le lecteur sur la position sauvegardée, puis seul le bouton « Lire »
-            // (ou une commande externe comme Android Auto) démarre effectivement la lecture.
-            p.setPlaybackSpeed(s?.speed ?: 1f)
-            p.prepare()
         }
     }
     // Afficher un livre : si le lecteur le contient déjà (mini-lecteur, livre en cours), on rouvre l'écran
@@ -267,15 +283,22 @@ fun App(store: Store) {
 
             val tabs = listOf(stringResource(R.string.tab_all), stringResource(R.string.tab_new), stringResource(R.string.tab_in_progress), stringResource(R.string.tab_finished))
             var tab by remember { mutableStateOf(0) }
-            val byTab = when (tab) {
-                1 -> books.filter { !store.hasSaved(it.path) && !store.finished(it.path) }
-                2 -> books.filter { store.hasSaved(it.path) && !store.finished(it.path) }
-                3 -> books.filter { store.finished(it.path) }
-                else -> books
-            }
             val q = fold(query.trim())
-            val found = if (q.isEmpty()) byTab else byTab.filter { fold(it.path).contains(q) }
-            val shown = if (sortRecent) found.sortedByDescending { store.load(it.path)?.updated ?: 0L } else found
+            // Filtrage, recherche et tri (qui lisent les préférences livre par livre) : recalculés seulement quand
+            // quelque chose change, et au retour du lecteur (showPlayer), pas à chaque recomposition.
+            val shown = remember(books, tab, q, sortRecent, showPlayer, curPath) {
+                val byTab = when (tab) {
+                    1 -> books.filter { !store.hasSaved(it.path) && !store.finished(it.path) }
+                    2 -> books.filter { store.hasSaved(it.path) && !store.finished(it.path) }
+                    3 -> books.filter { store.finished(it.path) }
+                    else -> books
+                }
+                val found = if (q.isEmpty()) byTab else byTab.filter { fold(it.path).contains(q) }
+                if (sortRecent) {
+                    val updated = found.associate { it.path to (store.load(it.path)?.updated ?: 0L) }
+                    found.sortedByDescending { updated[it.path] ?: 0L }
+                } else found
+            }
             if (books.isNotEmpty()) {
                 TabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.surface) {
                     tabs.forEachIndexed { i, t ->
@@ -343,9 +366,7 @@ fun App(store: Store) {
 /** Mini-lecteur affiché en bas de la bibliothèque dès qu'un livre est chargé dans le lecteur. */
 @Composable
 fun MiniPlayer(books: List<Book>, onOpen: (Book) -> Unit, onClose: () -> Unit) {
-    var tick by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) { while (true) { delay(500); tick++ } }
-    tick.let { }
+    rememberTick().let { }
     val p = PlaybackService.player ?: return
     if (p.mediaItemCount == 0) return
     val path = p.currentMediaItem?.mediaMetadata?.extras?.getString("path") ?: return
@@ -404,14 +425,20 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
     val loaded = isLoaded(PlaybackService.player, bk)
     val idx = if (loaded) PlaybackService.player?.currentMediaItemIndex ?: 0 else 0
     LaunchedEffect(loaded, idx) {
-        // Les chapitres n'existent que dans les conteneurs MP4 (.m4b/.m4a) : inutile d'ouvrir les autres fichiers.
+        // Les chapitres n'existent que dans les conteneurs MP4 (.m4b/.m4a) et les MP3 à balise ID3 : inutile d'ouvrir les autres.
         val e = bk.names.getOrNull(idx)?.substringAfterLast('.', "")?.lowercase()
-        chaps = if (loaded && e in setOf("m4b", "m4a", "mp4")) withContext(Dispatchers.IO) { Chapters.read(ctx, bk.uris[idx]) } else emptyList()
+        chaps = if (loaded && e in setOf("m4b", "m4a", "mp4", "mp3")) withContext(Dispatchers.IO) {
+            // Un chapitre sans titre reçoit « Chapitre N » dans la langue de l'appli.
+            Chapters.read(ctx, bk.uris[idx]).mapIndexed { i, c -> if (c.title.isBlank()) c.copy(title = ctx.getString(R.string.chapter_n, i + 1)) else c }
+        } else emptyList()
     }
     // Cette boucle ne fait que rafraîchir l'affichage : la progression est sauvegardée par PlaybackService.
+    val owner = rememberLifecycleOwner()
     LaunchedEffect(Unit) {
         while (true) {
-            delay(500); tick++
+            delay(500)
+            if (!owner.isVisible()) continue // appli en arrière-plan : on ne rafraîchit rien
+            tick++
             val pl = PlaybackService.player
             if (pl != null && isLoaded(pl, bk)) {
                 if (pl.playbackState == Player.STATE_READY) {

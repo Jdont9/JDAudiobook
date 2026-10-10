@@ -22,7 +22,14 @@ fun fold(s: String): String = Normalizer.normalize(s.lowercase(), Normalizer.For
 data class ScanProgress(val folders: Int, val books: Int)
 
 class Store(private val ctx: Context) {
+    // Trois fichiers de préférences au lieu d'un seul : chaque apply() réécrit TOUT son fichier XML, et la position est
+    // enregistrée toutes les 5 s. « p » (réglages, signets, durées…) ne bouge presque jamais ; « pos » (positions) et
+    // « stats » (statistiques) sont les seuls à être réécrits souvent, et restent petits (voir compactStats).
     private val p = ctx.getSharedPreferences("p", 0)
+    private val pos = ctx.getSharedPreferences("pos", 0)
+    private val st = ctx.getSharedPreferences("stats", 0)
+    // Jeton secret du service de lecture (jamais sauvegardé : fichier « sec » absent des règles de sauvegarde).
+    private val sec = ctx.getSharedPreferences("sec", 0)
     // Ancien emplacement du cache de la bibliothèque (préférences) : lu une seule fois pour migrer vers un fichier.
     private val lib = ctx.getSharedPreferences("lib", 0)
 
@@ -32,16 +39,40 @@ class Store(private val ctx: Context) {
         private var memKey: String? = null
         private var memBooks: List<Book>? = null
         private val memLock = Any()
+        private val fileLock = Any()   // écriture du fichier de cache (et lecture-modification-écriture des pochettes)
+        private val scanLock = Any()   // un seul scan à la fois (appli et service ne se font plus concurrence)
+        private val migLock = Any()
+        // Pochettes (re)trouvées pendant qu'un scan tourne : le scan les réapplique à son résultat au lieu de les écraser.
+        private val coverUpdates = HashMap<String, String>()
     }
+
+    init { migratePrefs() }
+
+    /** Une seule fois : sort les positions et les statistiques de « p » vers leurs nouveaux fichiers (idempotent). */
+    private fun migratePrefs() = synchronized(migLock) {
+        if (p.getBoolean("mig_split", false)) return@synchronized
+        val ep = pos.edit(); val es = st.edit(); val e = p.edit()
+        for ((k, v) in p.all) {
+            val str = v as? String ?: continue
+            when {
+                k.startsWith("s_") || k == "last_book" -> { if (!pos.contains(k)) ep.putString(k, str); e.remove(k) }
+                k.startsWith("t|") || k.startsWith("ti|") -> { if (!st.contains(k)) es.putString(k, str); e.remove(k) }
+            }
+        }
+        ep.commit(); es.commit() // écrits sur disque avant de retirer les anciennes clés
+        e.putBoolean("mig_split", true).apply()
+    }
+
+    /** Jeton aléatoire joint aux commandes du widget : le service refuse celles qui ne l'ont pas (il est exporté). */
+    fun serviceToken(): String = sec.getString("svc", null)
+        ?: java.util.UUID.randomUUID().toString().also { sec.edit().putString("svc", it).apply() }
     var root: String? get() = p.getString("root", null); set(v) { p.edit().putString("root", v).apply() }
 
     // 4e champ = horodatage de la sauvegarde (absent des anciennes sauvegardes = 0) : sert à savoir si le fichier
     // de progression du dossier du livre est plus récent que ce qu'on a ici.
-    fun save(path: String, i: Int, pos: Long, speed: Float, updated: Long = System.currentTimeMillis()) =
-        p.edit().putString("s_$path", "$i|$pos|$speed|$updated").apply()
-    fun load(path: String): Saved? = p.getString("s_$path", null)?.split("|")?.let {
-        Saved(it[0].toInt(), it[1].toLong(), it[2].toFloat(), it.getOrNull(3)?.toLongOrNull() ?: 0L)
-    }
+    fun save(path: String, i: Int, position: Long, speed: Float, updated: Long = System.currentTimeMillis()) =
+        this.pos.edit().putString("s_$path", "$i|$position|${safeSpeed(speed)}|$updated").apply()
+    fun load(path: String): Saved? = parseSaved(pos.getString("s_$path", null))
 
     /** Applique le fichier de progression du dossier s'il est plus récent que la sauvegarde locale. */
     fun applyProgressFile(path: String, names: List<String>, d: ProgressFile.Data): Boolean {
@@ -60,7 +91,7 @@ class Store(private val ctx: Context) {
         fun map(i: Int): Int? = oldNames.getOrNull(i)?.let { n -> newNames.indexOf(n) }?.takeIf { it >= 0 }
         load(path)?.let { s -> map(s.index)?.let { ni -> if (ni != s.index) save(path, ni, s.pos, s.speed, s.updated) } }
     }
-    fun hasSaved(path: String): Boolean = p.contains("s_$path")
+    fun hasSaved(path: String): Boolean = pos.contains("s_$path")
     fun finished(path: String): Boolean = p.getBoolean("fin_$path", false)
     fun setFinished(path: String, v: Boolean) = p.edit().putBoolean("fin_$path", v).apply()
 
@@ -99,8 +130,8 @@ class Store(private val ctx: Context) {
     fun setSkipSeconds(s: Int) = p.edit().putInt("skip_s", s).apply()
 
     // Dernier livre écouté : le widget s'en sert pour reprendre quand le lecteur est vide.
-    fun lastBook(): String? = p.getString("last_book", null)
-    fun setLastBook(path: String) { if (lastBook() != path) p.edit().putString("last_book", path).apply() }
+    fun lastBook(): String? = pos.getString("last_book", null)
+    fun setLastBook(path: String) { if (lastBook() != path) pos.edit().putString("last_book", path).apply() }
 
     // Signets (par livre, repérés par nom de fichier pour survivre à un changement d'ordre)
     fun bookmarks(path: String): List<Bookmark> = try {
@@ -134,20 +165,49 @@ class Store(private val ctx: Context) {
     fun flushTime() {
         val snap = synchronized(pendingTime) { HashMap(pendingTime).also { pendingTime.clear() } }
         if (snap.isEmpty()) return
-        val e = p.edit()
+        val e = st.edit()
         snap.forEach { (k, v) ->
             val key = "t|$k"
-            val old = p.getString(key, "0,0")!!.split(",")
-            e.putString(key, "${old[0].toLong() + v[0]},${old[1].toLong() + v[1]}")
+            val old = pair(st.getString(key, null))
+            e.putString(key, "${old[0] + v[0]},${old[1] + v[1]}")
         }
         e.apply()
     }
     fun importMonthlyStat(path: String, yearMonth: String, ms: Long) {
-        p.edit().putString("ti|$path|${yearMonth}01", "$ms,$ms").apply()
+        st.edit().putString("ti|$path|${yearMonth}01", "$ms,$ms").apply()
     }
-    fun stats(): List<Stat> = p.all.filterKeys { it.startsWith("t|") || it.startsWith("ti|") }.map { (k, v) ->
-        val r = k.substringAfter('|'); val x = (v as String).split(",")
-        Stat(r.substringBeforeLast('|'), r.substringAfterLast('|'), x[0].toLong(), x[1].toLong())
+    private fun pair(raw: String?): LongArray {
+        val x = raw?.split(",")
+        return longArrayOf(x?.getOrNull(0)?.toLongOrNull() ?: 0L, x?.getOrNull(1)?.toLongOrNull() ?: 0L)
+    }
+    fun stats(): List<Stat> = st.all.filterKeys { it.startsWith("t|") || it.startsWith("ti|") }.mapNotNull { (k, v) ->
+        val raw = v as? String ?: return@mapNotNull null
+        val r = k.substringAfter('|'); val x = pair(raw)
+        Stat(r.substringBeforeLast('|'), r.substringAfterLast('|'), x[0], x[1])
+    }
+
+    /** Les statistiques par jour s'accumulaient sans fin : au-delà de 400 jours, elles sont regroupées par mois
+     *  (les totaux restent exacts ; seul le détail jour par jour des vieilles données disparaît). */
+    fun compactStats() {
+        val cutoff = SimpleDateFormat("yyyyMMdd", Locale.US).format(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -400) }.time)
+        val acc = HashMap<String, LongArray>()
+        val toRemove = mutableListOf<String>()
+        for ((k, v) in st.all) {
+            if (!k.startsWith("t|") || v !is String) continue
+            val day = k.substringAfterLast('|')
+            if (day >= cutoff) continue
+            val target = k.substringBeforeLast('|') + "|" + monthStart(day)
+            if (target == k) continue
+            val a = acc.getOrPut(target) { pair(st.getString(target, null)) }
+            val x = pair(v)
+            a[0] += x[0]; a[1] += x[1]
+            toRemove += k
+        }
+        if (toRemove.isEmpty()) return
+        val e = st.edit()
+        acc.forEach { (k, a) -> e.putString(k, "${a[0]},${a[1]}") }
+        toRemove.forEach { e.remove(it) }
+        e.apply()
     }
 
 
@@ -176,14 +236,16 @@ class Store(private val ctx: Context) {
         try {
             writeCacheText(old)
             lib.edit().remove(cacheKey()).apply(); p.edit().remove(cacheKey()).apply()
-        } catch (e: Exception) { }
+        } catch (e: Exception) { logw("migration du cache de la bibliothèque", e) }
         return old
     }
 
     private fun writeCacheText(text: String) {
-        val f = cacheFile(); val tmp = File(f.path + ".tmp")
-        tmp.writeText(text)
-        if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+        synchronized(fileLock) {
+            val f = cacheFile(); val tmp = File(f.path + ".tmp")
+            tmp.writeText(text)
+            if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+        }
     }
 
     private fun parseBooks(s: String): List<Book>? = try {
@@ -212,27 +274,33 @@ class Store(private val ctx: Context) {
             })
         }
         synchronized(memLock) { memKey = cacheKey(); memBooks = books }
-        try { writeCacheText(a.toString()) } catch (e: Exception) { }
+        try { writeCacheText(a.toString()) } catch (e: Exception) { logw("cache de la bibliothèque non écrit", e) }
         lib.edit().remove(cacheKey()).apply(); p.edit().remove(cacheKey()).apply()
     }
 
     /** Mémorise une pochette (re)trouvée pour un livre dans le cache de la bibliothèque. */
     fun updateCover(path: String, uri: String) {
-        val l = cachedBooks() ?: return
-        cacheBooks(l.map { if (it.path == path) it.copy(cover = uri) else it })
+        synchronized(memLock) { coverUpdates[path] = uri }
+        synchronized(fileLock) { // lecture-modification-écriture d'un seul tenant
+            val l = cachedBooks() ?: return
+            cacheBooks(l.map { if (it.path == path) it.copy(cover = uri) else it })
+        }
     }
 
     /** Bibliothèque pour le service (Android Auto, notifications…) : le cache d'abord, un scan complet
      *  seulement s'il n'y en a pas encore. Avant, chaque requête d'un client média relançait un scan SAF
      *  complet en tâche de fond, en concurrence avec l'ouverture du livre dans l'appli. */
-    fun library(): List<Book> = cachedBooks() ?: scan()
+    fun library(): List<Book> = cachedBooks() ?: synchronized(scanLock) { cachedBooks() ?: scanLocked() }
 
     // ---- Scan de l'arborescence : profondeur illimitée, tout dossier qui contient directement des
     // fichiers audio est un livre (même logique que Smart AudioBook Player). Utilise directement
     // DocumentsContract (une seule requête par dossier) plutôt que DocumentFile, qui fait un appel
     // binder séparé par fichier pour chaque propriété lue — sur une grosse bibliothèque, ça se compte
     // en dizaines de milliers d'appels et c'est ça qui rend le scan interminable.
-    fun scan(onProgress: ((ScanProgress) -> Unit)? = null): List<Book> {
+    fun scan(onProgress: ((ScanProgress) -> Unit)? = null): List<Book> = synchronized(scanLock) { scanLocked(onProgress) }
+
+    private fun scanLocked(onProgress: ((ScanProgress) -> Unit)? = null): List<Book> {
+        synchronized(memLock) { coverUpdates.clear() }
         val treeUri = Uri.parse(root ?: return emptyList())
         val rootId = try { DocumentsContract.getTreeDocumentId(treeUri) } catch (e: Exception) { return emptyList() }
         val ext = setOf("mp3", "m4b", "m4a", "ogg", "opus", "flac", "wav")
@@ -261,7 +329,7 @@ class Store(private val ctx: Context) {
                         kids += Kid(c.getString(0), c.getString(1) ?: "", c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR)
                     }
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) { logw("liste du dossier illisible", e) }
             return kids
         }
         fun ext(name: String) = name.substringAfterLast('.', "").lowercase()
@@ -325,10 +393,15 @@ class Store(private val ctx: Context) {
                 visit(sub.id, if (path.isEmpty()) sub.name else "$path/${sub.name}", sub.name)
             }
         }
-        val rootName = root?.let { Uri.parse(it).lastPathSegment?.substringAfterLast(':') } ?: "Racine"
+        val rootName = root?.let { Uri.parse(it).lastPathSegment?.substringAfterLast(':') } ?: ctx.getString(R.string.root_folder)
         visit(rootId, "", rootName)
         onProgress?.invoke(ScanProgress(folders, out.size))
-        cacheBooks(out)
-        return out
+        // Pochettes enregistrées pendant le scan : on les remet au lieu de les écraser.
+        val merged = synchronized(memLock) {
+            if (coverUpdates.isEmpty()) out.toList()
+            else out.map { b -> coverUpdates[b.path]?.let { b.copy(cover = it) } ?: b }
+        }
+        cacheBooks(merged)
+        return merged
     }
 }

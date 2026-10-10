@@ -30,6 +30,7 @@
     <string name="chapters">Chapitres</string>
     <string name="choose_file">Choisir un fichier</string>
     <string name="chapter_of">Chapitre %1$s/%2$s · %3$s</string>
+    <string name="chapter_n">Chapitre %1$d</string>
     <string name="listened_of">Lecture %1$s de %2$s · %3$s %% · Reste %4$s</string>
     <string name="duration_probing">Durée du livre : calcul… %1$s/%2$s</string>
     <string name="duration_unavailable">Durée du livre : indisponible (fichier illisible)</string>
@@ -96,5 +97,7 @@
     <string name="sleep_end_of_file">Fin du fichier en cours</string>
     <string name="sleep_file_short">fichier</string>
     <string name="service_unavailable">Le service de lecture n\'a pas pu démarrer. Réessaie.</string>
+    <string name="open_failed">Impossible d\'ouvrir ce livre. Réessaie.</string>
+    <string name="root_folder">Racine</string>
     <string name="not_found_recent">✗ %1$s : introuvable (déjà cherché récemment)</string>
 </resources>

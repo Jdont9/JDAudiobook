@@ -77,9 +77,31 @@ class PlaybackService : MediaLibraryService() {
         const val ACTION_PLAY_PAUSE = "fr.jd.audiobooks.PLAY_PAUSE"
         const val ACTION_NEXT = "fr.jd.audiobooks.NEXT"
         const val ACTION_PREV = "fr.jd.audiobooks.PREV"
+        /** Jeton joint par le widget : le service est exporté (Android Auto, notification…), donc ces commandes
+         *  ne sont acceptées que si elles portent le jeton secret de l'appli. */
+        const val EXTRA_TOKEN = "fr.jd.audiobooks.TOKEN"
+        private val ACTIONS = setOf(ACTION_PLAY_PAUSE, ACTION_NEXT, ACTION_PREV)
+        /** Clients médias autorisés en plus des composants système de confiance (isTrusted) et de l'appli elle-même. */
+        private val ALLOWED_CLIENTS = setOf(
+            "com.google.android.projection.gearhead",   // Android Auto
+            "com.google.android.googlequicksearchbox",  // Assistant Google
+            "com.google.android.carassistant",          // Assistant en voiture
+            "com.android.car.media",                    // Android Automotive
+            "com.android.systemui",                     // écran de verrouillage / volet de notifications
+            "com.android.bluetooth",                    // commandes Bluetooth (voiture, casque)
+            "com.google.android.bluetooth",             // idem sur les Pixel (module Bluetooth mis à jour par Google Play)
+            "com.google.android.wearable.app"           // montre Wear OS
+        )
     }
 
+    private fun isAllowedClient(c: MediaSession.ControllerInfo): Boolean =
+        c.isTrusted || c.packageName == packageName || c.packageName in ALLOWED_CLIENTS
+
     override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action in ACTIONS && intent?.getStringExtra(EXTRA_TOKEN) != store.serviceToken()) {
+            logw("Commande ignorée (jeton absent ou faux) : ${intent?.action}")
+            return super.onStartCommand(intent, flags, startId)
+        }
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> player?.let {
                 // Lecteur vide (service redémarré, mini-lecteur fermé) : le widget reprend le dernier livre.
@@ -100,12 +122,12 @@ class PlaybackService : MediaLibraryService() {
                 val pl = player ?: return@launch
                 markFreshStart()
                 pl.setMediaItems(l.items, l.index, l.pos)
-                pl.setPlaybackSpeed(l.speed)
+                pl.setPlaybackSpeed(safeSpeed(l.speed))
                 pl.prepare()
                 pl.play()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) { }
+            } catch (e: Exception) { logw("reprise du dernier livre", e) }
         }
     }
 
@@ -152,11 +174,20 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private val libraryCallback = object : MediaLibrarySession.Callback {
+        // Seuls l'appli, le système et les clients connus (Android Auto, Assistant, Bluetooth, montre) peuvent parcourir
+        // la bibliothèque ou piloter la lecture : une autre appli installée ne peut plus lister tes livres.
+        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
+            if (isAllowedClient(controller)) super.onConnect(session, controller)
+            else {
+                logw("Client média refusé : ${controller.packageName}")
+                MediaSession.ConnectionResult.reject()
+            }
+
         override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?) =
             Futures.immediateFuture(
                 LibraryResult.ofItem(
                     MediaItem.Builder().setMediaId(ROOT_ID)
-                        .setMediaMetadata(MediaMetadata.Builder().setTitle("JD Audiobook Reader").setIsBrowsable(true).setIsPlayable(false).build())
+                        .setMediaMetadata(MediaMetadata.Builder().setTitle(getString(R.string.app_name)).setIsBrowsable(true).setIsPlayable(false).build())
                         .build(), params
                 )
             )
@@ -235,6 +266,9 @@ class PlaybackService : MediaLibraryService() {
         val p = ExoPlayer.Builder(this)
             .setAudioAttributes(AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).setUsage(C.USAGE_MEDIA).build(), true)
             .setHandleAudioBecomingNoisy(true)
+            // Garde le processeur éveillé pendant la lecture écran éteint (fichiers locaux) : sans ça, certains
+            // téléphones saccadent ou coupent. Le verrou est relâché dès que la lecture s'arrête.
+            .setWakeMode(C.WAKE_MODE_LOCAL)
             .setSeekBackIncrementMs(30_000).setSeekForwardIncrementMs(30_000).build()
         p.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(sessionId: Int) { Boost.attach(sessionId) }

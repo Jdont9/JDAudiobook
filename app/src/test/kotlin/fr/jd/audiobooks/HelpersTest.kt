@@ -39,4 +39,54 @@ class HelpersTest {
         assertNull(SabpImport.parsePosition(byteArrayOf(1, 2, 3)))
         assertNull(SabpImport.parsePosition(ByteArray(0)))
     }
+
+    // ---- Robustesse face aux données lues dans des fichiers modifiables ou corrompus ----
+
+    @Test fun safeSpeedFallsBackToOne() {
+        assertEquals(1f, safeSpeed(Float.NaN), 0f)
+        assertEquals(1f, safeSpeed(0f), 0f)
+        assertEquals(1f, safeSpeed(-2f), 0f)
+        assertEquals(1f, safeSpeed(Float.POSITIVE_INFINITY), 0f)
+        assertEquals(1f, safeSpeed(50f), 0f)
+        assertEquals(1.5f, safeSpeed(1.5f), 0f)
+    }
+
+    @Test fun parseSavedNeverThrows() {
+        assertNull(parseSaved(null))
+        assertNull(parseSaved(""))
+        assertNull(parseSaved("abc|def"))
+        assertNull(parseSaved("3"))
+        assertEquals(Saved(2, 5000L, 1f, 7L), parseSaved("2|5000|0.0|7"))      // vitesse 0 -> 1
+        assertEquals(Saved(0, 0L, 1f, 0L), parseSaved("-4|-9|NaN"))            // négatifs ramenés à 0, NaN -> 1
+        assertEquals(Saved(1, 10L, 1.25f, 99L), parseSaved("1|10|1.25|99"))
+    }
+
+    @Test fun progressFileIsSanitized() {
+        val bad = """{"index":-3,"file":"a.mp3","pos":-5,"speed":0,"finished":true,"updated":99999999999999}"""
+        val d = ProgressFile.parse(bad.toByteArray(), now = 1_000L)!!
+        assertEquals(0, d.index)
+        assertEquals(0L, d.pos)
+        assertEquals(1f, d.speed, 0f)
+        assertTrue(d.finished)
+        assertEquals(1_000L + 24L * 3600 * 1000, d.updated) // pas plus d'un jour dans le futur
+        val neg = ProgressFile.parse("""{"index":1,"pos":2,"speed":-1}""".toByteArray())!!
+        assertEquals(1f, neg.speed, 0f)
+        val ok = ProgressFile.parse("""{"index":1,"pos":2,"speed":1.75,"updated":5}""".toByteArray(), now = 10L)!!
+        assertEquals(1.75f, ok.speed, 0f)
+        assertEquals(5L, ok.updated)
+        assertNull(ProgressFile.parse("pas du json".toByteArray()))
+        assertNull(ProgressFile.parse("""{"pos":2}""".toByteArray())) // « index » manquant
+    }
+
+    @Test fun monthStartGroupsDays() {
+        assertEquals("20240301", monthStart("20240315"))
+        assertEquals("20240301", monthStart("20240301"))
+        assertEquals("bizarre", monthStart("bizarre"))
+    }
+
+    @Test fun readCappedStopsAtLimit() {
+        assertArrayEquals(ByteArray(10) { 1 }, ByteArray(10) { 1 }.inputStream().readCapped(10))
+        assertNull(ByteArray(11) { 1 }.inputStream().readCapped(10))
+    }
 }
+

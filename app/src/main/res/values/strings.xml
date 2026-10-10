@@ -30,6 +30,7 @@
     <string name="chapters">Chapters</string>
     <string name="choose_file">Choose a file</string>
     <string name="chapter_of">Chapter %1$s/%2$s · %3$s</string>
+    <string name="chapter_n">Chapter %1$d</string>
     <string name="listened_of">Listened %1$s of %2$s · %3$s %% · Remaining %4$s</string>
     <string name="duration_probing">Book duration: computing… %1$s/%2$s</string>
     <string name="duration_unavailable">Book duration: unavailable (unreadable file)</string>
@@ -96,5 +97,7 @@
     <string name="sleep_end_of_file">End of the current file</string>
     <string name="sleep_file_short">file</string>
     <string name="service_unavailable">The playback service could not start. Please try again.</string>
+    <string name="open_failed">Couldn\'t open this book. Please try again.</string>
+    <string name="root_folder">Root</string>
     <string name="not_found_recent">✗ %1$s: not found (already searched recently)</string>
 </resources>

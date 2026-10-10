@@ -2,6 +2,43 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.3.0
+**New**
+- **Chapters in MP3 files.** MP3s that carry ID3v2.3/2.4 chapters (`CHAP` frames, the kind written by Mp3tag or Chapter and Verse) now show their chapter list in the player, with chapter-aware previous/next and a "Chapter n/N" line. A chapter without a title is shown as "Chapter N". The same safety limits as for `m4b` apply (bounded sizes, a suspicious tag simply shows no chapters).
+- Not covered: the `CTOC` table of contents is ignored (chapters are listed by start time, so nested chapters appear as a flat list), ID3v2.2 tags have no chapters, and compressed or encrypted frames are skipped.
+
+## 1.2.2
+Robustness and security release, following a code audit. No new feature.
+
+**Fixes**
+- A bad value in `position.jd.json` (speed of 0, negative or not a number; negative position; a date far in the future) could make the app crash every time that book was opened. Values read from that file, and from the saved progress, are now checked and brought back to something usable.
+- Opening a book can no longer crash the app: any error is logged and reported with a message.
+- Playback no longer stutters or stops with the screen off on some phones: the player now keeps the CPU awake while playing (the wake lock the README already promised).
+- Chapters (`m4b`/`m4a`): a corrupted or booby-trapped file can no longer exhaust memory or freeze the app. Sizes and counters read from the file are bounded, reads are completed, and a suspicious file simply shows no chapters.
+- Replacing a cover now overwrites `cover.jpg` instead of creating `cover (1).jpg` next to it.
+- A cover found while the library was being scanned is no longer lost when the scan ends.
+- The library cache can no longer be corrupted by two scans (app and Android Auto) writing at once: scans now run one at a time.
+- Texts that ignored the app language (the library's root folder name, the app name in the widget and in Android Auto) are now translated.
+
+**Security and privacy**
+- The playback service (exported for Android Auto and the notification) no longer accepts just any app: only the app itself, trusted system components, Android Auto, Google Assistant, Android Automotive, Bluetooth and Wear OS can browse the library or control playback. Refused clients are logged.
+- The widget's play/next/previous commands carry a secret token; the same commands sent by another app are ignored. (Widgets already on your home screen pick up the token the next time the player changes state; if a widget button does nothing right after updating, open the app once.)
+- The README now says that Android backup includes progress, bookmarks and statistics, and how to turn it off.
+- The update check ignores answers larger than 1 MB.
+- Leaving a library folder for another one now releases the old folder's access permission.
+
+**Performance**
+- Positions and statistics moved to their own files: saving the position every 5 s used to rewrite one large file holding all settings, bookmarks, durations and statistics. Existing data is moved automatically on first launch (and from a restored backup).
+- Daily statistics older than 400 days are grouped by month, so the statistics no longer grow forever (totals stay exact; only the day-by-day detail of old data goes).
+- The library list (filter, search, sort) is no longer recomputed at each redraw.
+- The screen no longer refreshes twice a second while the app is in the background.
+
+**Other**
+- Errors that were silently swallowed are now written to the Android log (tag `JDAudiobook`).
+- 10 new unit tests (safe speed, progress-file sanitising, corrupted saves, chapter parsing including oversized and truncated files); the build workflow now also runs lint and publishes its report.
+- Build workflow hardened: the Gradle wrapper is verified, the build job is read-only, and only a separate job can publish a release.
+- Not changed in this release: the Audiolib cover source, dependency and target SDK versions (Dependabot proposes updates), and the size of `MainActivity.kt`.
+
 ## 1.2.1
 **Fixes**
 - Rotating the screen no longer closes the player (open book, player/stats screen, search and sort are kept; the book is reloaded if the process was killed).

@@ -4,7 +4,7 @@
 
 A simple, fast audiobook player for Android that plays your files (MP3, M4B…) straight from a folder on your phone. No account, no ads, no tracking.
 
-Written in Kotlin with Jetpack Compose and Media3. Version **1.2.1**. The app is available in **English and French** (it follows your phone's language).
+Written in Kotlin with Jetpack Compose and Media3. Version **1.3.0**. The app is available in **English and French** (it follows your phone's language).
 
 > 🤖 **Built by an AI.** The code, documentation and scripts in this repository were written by an artificial intelligence (Claude, by Anthropic) from the requests and feedback of the project's owner, who directed the development and uses the app. Like any software it may contain bugs; it is provided as is, without warranty.
 
@@ -24,7 +24,7 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.2.1**. The app is
 - Seek back/forward by **10, 15, 30, 45 or 60 s** (menu → Skip duration; also used by the notification and Android Auto), previous/next file, jump to any file of the book.
 - **Bookmarks** per book (bookmark icon in the player): add the current position, jump back to one, delete it.
 - Speed from ×0.75 to ×3, sleep timer (10 to 90 min, with a 15 s volume fade-out, or **end of the current file**), silence skipping, volume boost from +3 to +12 dB (remembered per book).
-- Chapters for `m4b`/`m4a` files.
+- Chapters for `m4b`/`m4a` files and for `mp3` files that carry ID3 chapters (`CHAP` frames); the chapter list and the previous/next buttons follow them.
 - **Mini player** at the bottom of the library whenever a book is loaded: cover, title, back (skip duration), play/pause, close. Tapping it reopens the player without reloading anything.
 - **Back** (system button, gesture, or the in-app button) returns to the library: playback keeps going and the app stays open. The ✕ on the mini player stops playback.
 - Background playback with a notification and lock-screen controls; usable from **Android Auto**; home-screen widget.
@@ -36,7 +36,7 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.2.1**. The app is
 
 ## Install
 
-1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.2.1.apk` on your phone.
+1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.3.0.apk` on your phone.
 2. Open the file. Android will ask you to allow installs from that source (your browser or file manager): accept.
 3. Launch the app, open the menu (**gear icon**, top right) → **Choose the books folder**. Grant access, including write access (needed for progress and covers).
 
@@ -85,7 +85,9 @@ Smart AudioBook Player's `position.sabp.dat` files are never modified.
 
 - Nothing is sent to the author; no account, no usage analytics, no ads.
 - The only network accesses are ones you trigger yourself: the cover search (the **book title**, i.e. the folder name, is sent to iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books and Open Library) and the update check (a request to `api.github.com`, like any web request it exposes your IP address to GitHub). Nothing runs in the background.
-- Permissions: background playback (foreground service), notifications, keeping the device awake while playing, internet (cover search and update check only). File access goes through Android's folder picker and is limited to the folder you choose.
+- Permissions: background playback (foreground service), notifications, keeping the device awake while playing (the CPU only, and only while audio is playing), internet (cover search and update check only). File access goes through Android's folder picker and is limited to the folder you choose.
+- Other apps cannot browse your library or control playback: the media service only accepts the app itself, the system (lock screen, Bluetooth), Android Auto, Google Assistant, Android Automotive and Wear OS. The widget's commands carry a secret token that never leaves the app.
+- Android backup: if Android's backup is on for your phone, your **progress, speeds, bookmarks and listening statistics** are included in your Google backup (never the audio, the covers or the library). To opt out, turn off backup in Android's settings.
 
 ## Build it yourself
 
@@ -117,6 +119,7 @@ User-facing text lives in Android string resources: `app/src/main/res/values/str
 | `About.kt` | About dialog and on-demand update check |
 | `SabpImport.kt` | Import from Smart AudioBook Player |
 | `Skip.kt`, `Dialogs.kt` | Skip duration, bookmark and skip dialogs |
+| `Util.kt` | Shared helpers: logging, safe playback speed, bounded reads, a screen-refresh tick that pauses in the background |
 | `CoverProvider.kt` | Serves covers by URI to the notification, Android Auto and the widget |
 | `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Volume boost, widget, pickers, icons, theme |
 

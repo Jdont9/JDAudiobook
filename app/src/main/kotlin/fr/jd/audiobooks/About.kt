@@ -42,19 +42,24 @@ object Updater {
         try {
             when (c.responseCode) {
                 200 -> {
-                    val o = JSONObject(String(c.inputStream.use { it.readBytes() }, Charsets.UTF_8))
-                    val tag = o.optString("tag_name")
-                    if (tag.isEmpty()) Result.NoRelease
-                    else if (isNewer(tag, current)) {
-                        val url = o.optString("html_url").takeIf { it.startsWith("https://github.com/") } ?: REPO_URL
-                        Result.Available(tag.removePrefix("v"), url)
-                    } else Result.UpToDate(current)
+                    // La réponse de GitHub fait quelques Ko : au-delà de 1 Mo, quelque chose cloche.
+                    val body = c.inputStream.use { it.readCapped(1_000_000) }
+                    if (body == null) Result.Error
+                    else {
+                        val o = JSONObject(String(body, Charsets.UTF_8))
+                        val tag = o.optString("tag_name")
+                        if (tag.isEmpty()) Result.NoRelease
+                        else if (isNewer(tag, current)) {
+                            val url = o.optString("html_url").takeIf { it.startsWith("https://github.com/") } ?: REPO_URL
+                            Result.Available(tag.removePrefix("v"), url)
+                        } else Result.UpToDate(current)
+                    }
                 }
                 404 -> Result.NoRelease
                 else -> Result.Error
             }
         } finally { c.disconnect() }
-    } catch (e: Exception) { Result.Error }
+    } catch (e: Exception) { logw("vérification de mise à jour échouée", e); Result.Error }
 
     /** Compare deux versions « 1.2.3 » (un éventuel suffixe « -beta » est ignoré). */
     fun isNewer(latest: String, current: String): Boolean {
@@ -76,7 +81,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
     var checking by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<Updater.Result?>(null) }
     fun open(url: String) {
-        try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+        try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { logw("impossible d'ouvrir le lien", e) }
     }
 
     AlertDialog(

@@ -13,7 +13,7 @@ object Boost {
 
     /** Appelé quand le lecteur crée/change sa session audio. */
     fun attach(sessionId: Int) {
-        try { enhancer?.release() } catch (e: Exception) { }
+        try { enhancer?.release() } catch (e: Exception) { logw("LoudnessEnhancer", e) }
         enhancer = try { LoudnessEnhancer(sessionId) } catch (e: Exception) { null }
         apply()
     }
@@ -28,11 +28,11 @@ object Boost {
         try {
             e.setTargetGain(gainDb * 100) // millibels
             e.enabled = gainDb > 0
-        } catch (ex: Exception) { }
+        } catch (ex: Exception) { logw("LoudnessEnhancer", ex) }
     }
 
     fun release() {
-        try { enhancer?.release() } catch (e: Exception) { }
+        try { enhancer?.release() } catch (e: Exception) { logw("LoudnessEnhancer", e) }
         enhancer = null
     }
 }

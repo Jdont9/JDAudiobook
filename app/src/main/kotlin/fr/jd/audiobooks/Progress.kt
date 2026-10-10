@@ -21,14 +21,17 @@ object ProgressFile {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO) // indépendant de l'UI et du service
     private val uriCache = HashMap<String, Uri>() // dossier -> uri du fichier, pour ne pas relister à chaque écriture
 
-    fun parse(bytes: ByteArray): Data? = try {
+    /** Le fichier est lisible et modifiable à la main, donc on ne lui fait pas confiance : valeurs bornées
+     *  (vitesse utilisable, position et index positifs, date pas plus d'un jour dans le futur). */
+    fun parse(bytes: ByteArray, now: Long = System.currentTimeMillis()): Data? = try {
         JSONObject(String(bytes, Charsets.UTF_8)).let {
             Data(
-                it.getInt("index"), it.optString("file", "").ifEmpty { null }, it.getLong("pos"),
-                it.optDouble("speed", 1.0).toFloat(), it.optBoolean("finished", false), it.optLong("updated", 0L)
+                it.getInt("index").coerceAtLeast(0), it.optString("file", "").ifEmpty { null }, it.getLong("pos").coerceAtLeast(0L),
+                safeSpeed(it.optDouble("speed", 1.0).toFloat()), it.optBoolean("finished", false),
+                it.optLong("updated", 0L).coerceIn(0L, now + 24L * 3600 * 1000)
             )
         }
-    } catch (e: Exception) { null }
+    } catch (e: Exception) { logw("$NAME illisible", e); null }
 
     private fun toBytes(bookName: String, d: Data): ByteArray = JSONObject()
         .put("app", "JD Audiobook Reader").put("version", 1).put("book", bookName)
@@ -42,7 +45,7 @@ object ProgressFile {
         if (uri == null) return null
         return try {
             DocumentsContract.getDocumentId(Uri.parse(uri)).substringBeforeLast('/', "").ifEmpty { null }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) { logw("dossier du livre illisible", e); null }
     }
 
     /** Infos attachées à chaque MediaItem : le service (qui sauvegarde la progression) n'a ainsi pas besoin de retrouver le livre. */
@@ -50,11 +53,14 @@ object ProgressFile {
         putString("path", bk.path); putString("book", bk.name); dirOf(bk)?.let { putString("dir", it) }
     }
 
-    private fun find(ctx: Context, tree: Uri, dirId: String): Uri? {
+    private fun find(ctx: Context, tree: Uri, dirId: String): Uri? = findDoc(ctx, tree, dirId, NAME)
+
+    /** URI du fichier [name] directement dans le dossier [dirId], ou null s'il n'existe pas. */
+    fun findDoc(ctx: Context, tree: Uri, dirId: String, name: String): Uri? {
         val kids = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId)
         val proj = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME)
         ctx.contentResolver.query(kids, proj, null, null, null)?.use { c ->
-            while (c.moveToNext()) if (c.getString(1) == NAME) return DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0))
+            while (c.moveToNext()) if (c.getString(1) == name) return DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0))
         }
         return null
     }
@@ -108,6 +114,7 @@ object ProgressFile {
                 os.use { it.write(bytes) }
                 return true
             } catch (e: Exception) {
+                logw("écriture de $NAME (essai ${attempt + 1})", e)
                 uriCache.remove(dir) // fichier supprimé entre-temps : on le relocalise / recrée au 2e essai
             }
         }

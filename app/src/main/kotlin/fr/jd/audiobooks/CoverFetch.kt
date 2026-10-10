@@ -51,7 +51,7 @@ object CoverFetch {
             setRequestProperty("User-Agent", "JDAudiobook/1.0 (Android)")
         }
         try { if (c.responseCode in 200..299) readCapped(c) else null } finally { c.disconnect() }
-    } catch (e: Exception) { null }
+    } catch (e: Exception) { logw("requête HTTP échouée", e); null }
 
     private fun json(url: String): JSONObject? = try { http(url)?.let { JSONObject(String(it, Charsets.UTF_8)) } } catch (e: Exception) { null }
 
@@ -182,9 +182,9 @@ object CoverFetch {
     fun fromUrl(raw: String): Found? {
         val url = raw.trim().takeIf { it.startsWith("http") } ?: return null
         val bytes = http(url) ?: return null
-        toJpeg(bytes)?.let { return Found(it, "lien") }
+        toJpeg(bytes)?.let { return Found(it, "link") }
         val img = metaImage(String(bytes, Charsets.UTF_8)) ?: return null
-        return fetchImage(img)?.let { Found(it, "lien") }
+        return fetchImage(img)?.let { Found(it, "link") }
     }
 
     /** Cherche la pochette d'un livre ; null si rien de suffisamment proche n'est trouvé. */
@@ -210,18 +210,22 @@ object CoverFetch {
     /** Enregistre la pochette : toujours dans le stockage de l'appli, et si possible aussi (cover.jpg) dans
      *  le dossier du livre. Renvoie l'URI du fichier écrit dans le dossier, ou null si l'écriture a échoué. */
     fun save(ctx: Context, store: Store, bk: Book, jpeg: ByteArray): String? {
-        try { Covers.localFile(ctx, bk.path).writeBytes(jpeg) } catch (e: Exception) { }
+        try { Covers.localFile(ctx, bk.path).writeBytes(jpeg) } catch (e: Exception) { logw("pochette non gardée dans l'appli", e) }
         var uri: String? = null
         val root = store.root; val dir = bk.dir
         if (root != null && dir != null) try {
             val tree = Uri.parse(root)
             val parent = DocumentsContract.buildDocumentUriUsingTree(tree, dir)
-            val doc = DocumentsContract.createDocument(ctx.contentResolver, parent, "image/jpeg", "cover.jpg")
+            // Un cover.jpg existe déjà (ancienne pochette à remplacer) : on l'écrase, au lieu de laisser le système
+            // en créer un second nommé « cover (1).jpg ».
+            val doc = ProgressFile.findDoc(ctx, tree, dir, "cover.jpg")
+                ?: DocumentsContract.createDocument(ctx.contentResolver, parent, "image/jpeg", "cover.jpg")
             if (doc != null) {
-                ctx.contentResolver.openOutputStream(doc, "w")?.use { it.write(jpeg) }
+                val os = try { ctx.contentResolver.openOutputStream(doc, "wt") } catch (e: Exception) { ctx.contentResolver.openOutputStream(doc, "w") }
+                os?.use { it.write(jpeg) }
                 uri = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getDocumentId(doc)).toString()
             }
-        } catch (e: Exception) { uri = null }
+        } catch (e: Exception) { logw("cover.jpg non écrit dans le dossier", e); uri = null }
         if (uri != null) store.updateCover(bk.path, uri)
         Covers.invalidate(bk.path, ctx)
         return uri
