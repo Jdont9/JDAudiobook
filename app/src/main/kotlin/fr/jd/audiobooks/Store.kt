@@ -342,7 +342,7 @@ class Store(private val ctx: Context) {
             val audio = files.filter { ext(it.name) in ext }.sortedWith(Comparator { a, b -> fileOrder(a.name, b.name) })
             if (audio.isNotEmpty()) {
                 val im = files.filter { ext(it.name) in img }
-                val cv = (im.firstOrNull { f -> listOf("cover", "folder", "front").any { f.name.lowercase().contains(it) } } ?: im.firstOrNull())
+                val cv = (im.firstOrNull { f -> f.name.lowercase().let { it == "cover.jpg" } } ?: im.firstOrNull { f -> listOf("cover", "folder", "front").any { f.name.lowercase().contains(it) } } ?: im.firstOrNull())
                     ?.let { uriFor(it.id) }
                 val bk = Book(path, label, audio.map { uriFor(it.id) }, audio.map { it.name }, cv, dirId)
                 out += bk

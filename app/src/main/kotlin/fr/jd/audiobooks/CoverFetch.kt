@@ -226,7 +226,9 @@ object CoverFetch {
                 uri = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getDocumentId(doc)).toString()
             }
         } catch (e: Exception) { logw("cover.jpg non écrit dans le dossier", e); uri = null }
-        if (uri != null) store.updateCover(bk.path, uri)
+        val pin = Covers.pinFile(ctx, bk.path)
+        if (uri != null) { store.updateCover(bk.path, uri); pin.delete() }
+        else try { pin.writeText("1") } catch (e: Exception) { logw("marque de pochette non écrite", e) }
         Covers.invalidate(bk.path, ctx)
         return uri
     }

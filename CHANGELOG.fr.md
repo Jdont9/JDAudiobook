@@ -2,6 +2,11 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.3.4
+**Nouveautés**
+- Lecteur : un bouton pour changer la pochette. On colle un lien (image ou page du livre), puis on cadre l'image dans un carré (glisser, pincer) avant d'enregistrer.
+- Android Auto et notification : boutons −30 s, −10 s, +10 s et +30 s.
+
 ## 1.3.3
 **Corrections**
 - Le recul automatique à la reprise fonctionne maintenant après un redémarrage de l'appli ou du téléphone, et quand on ouvre un livre depuis la bibliothèque. L'heure de la dernière écoute est relue dans la position enregistrée (elle n'était gardée qu'en mémoire, donc perdue). Une pause de plus d'un jour recule de 30 s. La reprise depuis Android Auto, le widget et le Bluetooth suit la même règle.

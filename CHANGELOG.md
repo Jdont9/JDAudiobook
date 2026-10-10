@@ -2,6 +2,11 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.3.4
+**New**
+- Player: a button to change the cover. Paste a link (image or book page), then frame it in a square (drag and pinch) before saving.
+- Android Auto and notification: −30 s, −10 s, +10 s and +30 s buttons.
+
 ## 1.3.3
 **Fixes**
 - Resume rewind now works after the app or the phone was restarted, and when you open a book from the library. The time of your last listening is read from the saved position (it was only kept in memory, so it was lost). A pause of more than a day now rewinds 30 s. Android Auto, the widget and Bluetooth resume use the same rule.

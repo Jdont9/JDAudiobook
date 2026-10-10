@@ -195,7 +195,10 @@ fun App(store: Store) {
     BackHandler(enabled = showPlayer || showStats) { if (showPlayer) leavePlayer() else showStats = false }
     val b = cur
     when {
-        b != null && showPlayer -> PlayerScreen(b, store) { leavePlayer() }
+        b != null && showPlayer -> PlayerScreen(
+            b, store,
+            onCoverChanged = { uri -> if (uri != null) books = books.map { if (it.path == b.path) it.copy(cover = uri) else it } }
+        ) { leavePlayer() }
         showStats -> StatsScreen(store) { showStats = false }
         else -> LibraryScreen(
             store, books, scanProgress, cacheLoaded, importMsg, curPath,

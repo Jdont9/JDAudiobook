@@ -32,7 +32,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
+fun PlayerScreen(bk: Book, store: Store, onCoverChanged: (String?) -> Unit, back: () -> Unit) {
     val ctx = LocalContext.current
     var tick by remember { mutableStateOf(0) }
     var boost by remember { mutableStateOf(store.boost(bk.path)) }
@@ -49,6 +49,7 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
     var probeFailed by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) }
     var showFiles by remember { mutableStateOf(false) }
+    var showCoverEdit by remember { mutableStateOf(false) }
     // "loaded" : le lecteur contient bien la playlist de CE livre. Tant que ce n'est pas le cas (ouverture en
     // cours, service en train de démarrer, ancien livre encore chargé), on affiche un écran de chargement
     // au lieu d'un écran vide, et on n'écrit rien dans les positions sauvegardées.
@@ -136,6 +137,9 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             BackButton(back)
             Spacer(Modifier.weight(1f))
+            IconButton({ showCoverEdit = true }) {
+                Icon(JdIcons.Image, contentDescription = stringResource(R.string.change_cover), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             IconButton({ showBookmarks = true }) {
                 Icon(JdIcons.Bookmark, contentDescription = stringResource(R.string.bookmarks), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -151,6 +155,7 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 )
             }
         }
+        if (showCoverEdit) CoverEditDialog(bk, store, onSaved = { uri -> showCoverEdit = false; onCoverChanged(uri) }, onDismiss = { showCoverEdit = false })
         // La pochette s'adapte à la place disponible. Les chapitres ne sont plus listés ici : ils sont dans le menu
         // du bas (la ligne du fichier, avec la flèche), à côté de la liste des fichiers.
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {

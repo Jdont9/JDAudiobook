@@ -11,6 +11,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import kotlinx.coroutines.*
+import kotlin.math.abs
 
 private const val ROOT_ID = "root"
 
@@ -177,15 +178,40 @@ class PlaybackService : MediaLibraryService() {
         return Loaded(items, idx, pos, saved?.speed ?: 1f)
     }
 
+    /** Sauts fixes proposés en plus du saut réglable : identifiant de commande, secondes (négatif = arrière), icône. */
+    private val customActions = listOf(
+        Triple("jd_back30", -30, R.drawable.ic_back30), Triple("jd_back10", -10, R.drawable.ic_back10),
+        Triple("jd_fwd10", 10, R.drawable.ic_fwd10), Triple("jd_fwd30", 30, R.drawable.ic_fwd30)
+    )
+
+    private fun customLayout(): ImmutableList<CommandButton> = ImmutableList.copyOf(customActions.map { (id, sec, icon) ->
+        CommandButton.Builder()
+            .setDisplayName(getString(if (sec < 0) R.string.back_n else R.string.forward_n, abs(sec).toString()))
+            .setSessionCommand(SessionCommand(id, Bundle.EMPTY)).setIconResId(icon).build()
+    })
+
     private val libraryCallback = object : MediaLibrarySession.Callback {
         // Seuls l'appli, le système et les clients connus (Android Auto, Assistant, Bluetooth, montre) peuvent parcourir
         // la bibliothèque ou piloter la lecture : une autre appli installée ne peut plus lister tes livres.
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
-            if (isAllowedClient(controller)) super.onConnect(session, controller)
-            else {
+            if (isAllowedClient(controller)) {
+                // Boutons ±10 s / ±30 s (Android Auto, notification) : commandes personnalisées à déclarer au client.
+                val cmds = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                    .apply { customActions.forEach { add(SessionCommand(it.first, Bundle.EMPTY)) } }.build()
+                MediaSession.ConnectionResult.AcceptedResultBuilder(session).setAvailableSessionCommands(cmds).build()
+            } else {
                 logw("Client média refusé : ${controller.packageName}")
                 MediaSession.ConnectionResult.reject()
             }
+
+        override fun onCustomCommand(
+            session: MediaSession, controller: MediaSession.ControllerInfo, customCommand: SessionCommand, args: Bundle
+        ): ListenableFuture<SessionResult> {
+            val sec = customActions.firstOrNull { it.first == customCommand.customAction }?.second
+                ?: return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+            player?.skipBy(sec * 1000L)
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
 
         override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?) =
             Futures.immediateFuture(
@@ -326,7 +352,7 @@ class PlaybackService : MediaLibraryService() {
         }, 1000)
         player = p
         self = this
-        session = MediaLibrarySession.Builder(this, SkipPlayer(p), libraryCallback).build()
+        session = MediaLibrarySession.Builder(this, SkipPlayer(p), libraryCallback).setCustomLayout(customLayout()).build()
     }
 
     override fun onGetSession(c: MediaSession.ControllerInfo) = session

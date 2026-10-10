@@ -386,14 +386,21 @@ object Covers {
         } catch (e: Exception) { logw("pochette intégrée illisible", e); false }
     }
 
+    /** Marque posée quand une pochette choisie à la main n'a pas pu être écrite dans le dossier du livre : la copie de
+     *  l'appli doit alors passer avant l'ancienne image du dossier. */
+    fun pinFile(ctx: Context, path: String): File = File(localFile(ctx, path).path + ".pin")
+
     private fun load(ctx: Context, bk: Book): Bitmap? {
-        var data: ByteArray? = try {
+        val local = localFile(ctx, bk.path)
+        fun readLocal(): ByteArray? = local.takeIf { it.exists() }?.let { try { it.readBytes() } catch (e: Exception) { null } }
+        var data: ByteArray? = if (pinFile(ctx, bk.path).exists()) readLocal() else null
+        if (data == null) data = try {
             bk.cover?.let { c -> ctx.contentResolver.openInputStream(Uri.parse(c))?.use { it.readBytes() } }
                 ?: MediaMetadataRetriever().run {
                     try { setDataSource(ctx, Uri.parse(bk.uris[0])); embeddedPicture } finally { release() }
                 }
         } catch (e: Exception) { null }
-        if (data == null) data = localFile(ctx, bk.path).takeIf { it.exists() }?.let { try { it.readBytes() } catch (e: Exception) { null } }
+        if (data == null) data = readLocal()
         if (data == null) return null
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, o)

@@ -17,3 +17,10 @@ fun Player.skipForward() {
     val t = currentPosition + Skip.ms
     seekTo(if (d > 0) minOf(t, d) else t)
 }
+
+/** Saut relatif de [ms] (négatif = arrière), borné au début et à la fin du fichier. */
+fun Player.skipBy(ms: Long) {
+    val d = duration
+    val t = currentPosition + ms
+    seekTo(if (d > 0) t.coerceIn(0L, d) else t.coerceAtLeast(0L))
+}

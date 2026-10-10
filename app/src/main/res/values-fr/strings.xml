@@ -100,4 +100,9 @@
     <string name="open_failed">Impossible d\'ouvrir ce livre. Réessaie.</string>
     <string name="root_folder">Racine</string>
     <string name="not_found_recent">✗ %1$s : introuvable (déjà cherché récemment)</string>
+    <string name="change_cover">Changer la pochette</string>
+    <string name="change_cover_help">Collez l\'adresse d\'une image, ou de la page du livre, pour « %1$s ». Vous pourrez ensuite la cadrer.</string>
+    <string name="paste">Coller</string>
+    <string name="crop_hint">Glissez et pincez pour cadrer le carré.</string>
+    <string name="save">Enregistrer</string>
 </resources>
