@@ -27,6 +27,9 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.media3.common.*
+import kotlinx.coroutines.*
+import java.text.SimpleDateFormat
+import java.util.*
 
 /** Écran bibliothèque : barre d'actions (engrenage), onglets, recherche, liste des livres, mini-lecteur et boîtes de dialogue.
  *  L'état partagé (livres, recherche, tri, navigation) reste dans App ; ici seulement l'état purement visuel. */
