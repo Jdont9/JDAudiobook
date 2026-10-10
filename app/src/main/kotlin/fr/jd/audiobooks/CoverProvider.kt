@@ -19,9 +19,14 @@ class CoverProvider : ContentProvider() {
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         val name = uri.lastPathSegment ?: throw FileNotFoundException()
         if (mode != "r" || !Regex("[0-9a-f]{1,8}\\.jpg").matches(name)) throw FileNotFoundException()
-        val f = File(File(context!!.filesDir, "art"), name)
-        if (!f.isFile) throw FileNotFoundException()
-        return ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY)
+
+        val baseDir = File(context!!.filesDir, "art").canonicalFile
+        val requested = File(baseDir, name).canonicalFile
+
+        val basePath = baseDir.path + File.separator
+        if (!requested.path.startsWith(basePath) || !requested.isFile) throw FileNotFoundException()
+
+        return ParcelFileDescriptor.open(requested, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
     override fun getType(uri: Uri) = "image/jpeg"
