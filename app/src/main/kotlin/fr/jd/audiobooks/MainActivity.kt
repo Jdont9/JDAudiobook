@@ -521,26 +521,16 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 )
             }
         }
-        // La pochette s'adapte à la place disponible : grande quand il n y a pas de chapitres (plus de grand vide),
-        // plus petite sinon pour laisser voir la liste.
+        // La pochette s'adapte à la place disponible. Les chapitres ne sont plus listés ici : ils sont dans le menu
+        // du bas (la ligne du fichier, avec la flèche), à côté de la liste des fichiers.
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-        val busy = chaps.isNotEmpty()
-        val coverSize = (if (busy) minOf(maxWidth * 0.6f, maxHeight * 0.4f) else minOf(maxWidth, maxHeight - 130.dp)).coerceIn(120.dp, 400.dp)
+        val coverSize = minOf(maxWidth, maxHeight - 130.dp).coerceIn(120.dp, 400.dp)
         LazyColumn(Modifier.fillMaxSize()) {
             item {
                 Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Cover(bk, coverSize)
                     Spacer(Modifier.height(8.dp))
                     Text(bk.name, style = MaterialTheme.typography.titleLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                }
-            }
-            if (chaps.isNotEmpty()) {
-                item { Text(stringResource(R.string.chapters), style = MaterialTheme.typography.titleMedium) }
-                itemsIndexed(chaps) { i, c ->
-                    Text(
-                        "${fmt(c.startMs)}  ${c.title}",
-                        Modifier.fillMaxWidth().clickable { p.seekTo(c.startMs) }.padding(vertical = 8.dp),
-                        color = if (i == ci) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -552,7 +542,12 @@ fun PlayerScreen(bk: Book, store: Store, back: () -> Unit) {
                 Icon(JdIcons.ArrowDropDown, contentDescription = stringResource(R.string.choose_file))
             }
             if (showBookmarks) BookmarksDialog(bk, store, p) { showBookmarks = false }
-            if (showFiles) FilePickerDialog(bk, durs, fi, store, onPick = { p.seekTo(it, 0); showFiles = false }, onDismiss = { showFiles = false })
+            if (showFiles) FilePickerDialog(
+                bk, durs, fi, store, chaps = chaps, chapIdx = ci,
+                onPick = { p.seekTo(it, 0); showFiles = false },
+                onPickChap = { p.seekTo(it); showFiles = false },
+                onDismiss = { showFiles = false }
+            )
             if (chaps.isNotEmpty()) Text(stringResource(R.string.chapter_of, ci + 1, chaps.size, chaps[ci].title), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
             val dur = p.duration.coerceAtLeast(1)
             // Pendant le glissement on ne déplace que le curseur ; la lecture saute une seule fois au relâchement.

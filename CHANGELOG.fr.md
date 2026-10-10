@@ -2,6 +2,13 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.3.1
+**Corrections**
+- Les listes de chapitres bidon sont ignorées : il faut au moins 2 chapitres à des instants différents. Certains MP3 découpés portent des chapitres tous à 0:00:00, ce qui affichait « Chapitre 2/2 » sur un fichier qui n'a pas vraiment de chapitres. La même règle s'applique aux `m4b`/`m4a` (un chapitre unique est ignoré).
+
+**Modifications**
+- La liste des chapitres n'est plus sous la couverture (qui garde toujours sa pleine taille) : elle est maintenant dans le menu sous le lecteur (la ligne du fichier, avec la flèche), sous la liste des fichiers, pour les `m4b` comme pour les `mp3`. Le chapitre en cours est mis en évidence et un toucher y saute.
+
 ## 1.3.0
 **Nouveauté**
 - **Chapitres dans les fichiers MP3.** Les MP3 qui portent des chapitres ID3v2.3/2.4 (frames `CHAP`, comme en écrivent Mp3tag ou Chapter and Verse) affichent maintenant leur liste de chapitres dans le lecteur, avec précédent/suivant par chapitre et une ligne « Chapitre n/N ». Un chapitre sans titre s'affiche « Chapitre N ». Les mêmes garde-fous que pour les `m4b` s'appliquent (tailles bornées ; une balise suspecte n'affiche simplement aucun chapitre).

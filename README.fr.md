@@ -4,7 +4,7 @@
 
 Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes fichiers (MP3, M4B…) depuis un dossier de ton téléphone. Pas de compte, pas de publicité, pas de suivi.
 
-Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.3.0**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
+Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.3.1**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
 
 > 🤖 **Projet réalisé par une IA.** Le code, la documentation et les scripts de ce dépôt ont été écrits par une intelligence artificielle (Claude, d'Anthropic) à partir des demandes et des retours du propriétaire du projet, qui a dirigé le développement et utilise l'appli. Comme tout logiciel, elle peut contenir des erreurs : elle est fournie telle quelle, sans garantie.
 
@@ -24,7 +24,7 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes 
 - Saut avant/arrière de **10, 15, 30, 45 ou 60 s** (menu → Durée du saut ; aussi utilisé par la notification et Android Auto), fichier précédent/suivant, accès direct à n'importe quel fichier du livre.
 - **Signets** par livre (icône signet dans le lecteur) : ajouter la position actuelle, y revenir, les supprimer.
 - Vitesse de ×0,75 à ×3, minuterie de sommeil (10 à 90 min, avec un fondu sonore de 15 s, ou **fin du fichier en cours**), saut des silences, gain de volume de +3 à +12 dB (mémorisé par livre).
-- Chapitres pour les fichiers `m4b`/`m4a` et pour les `mp3` qui portent des chapitres ID3 (frames `CHAP`) ; la liste des chapitres et les boutons précédent/suivant les suivent.
+- Chapitres pour les fichiers `m4b`/`m4a` et pour les `mp3` qui portent des chapitres ID3 (frames `CHAP`) : précédent/suivant sautent de chapitre en chapitre, et la liste des chapitres est dans le menu sous le lecteur (la ligne du fichier, avec la flèche), à côté de la liste des fichiers. Les listes de chapitres bidon (un seul chapitre, ou plusieurs au même instant) sont ignorées.
 - **Mini-lecteur** en bas de la bibliothèque dès qu'un livre est chargé : pochette, titre, recul (durée du saut), lecture/pause, fermer. Un appui rouvre le lecteur sans rien recharger.
 - **Retour** (bouton ou geste du système, bouton de l'appli) : revient à la bibliothèque, la lecture continue et l'appli reste ouverte. Le ✕ du mini-lecteur arrête la lecture.
 - Lecture en arrière-plan avec notification et commandes de l'écran verrouillé ; utilisable depuis **Android Auto** ; widget d'écran d'accueil.
@@ -36,7 +36,7 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement tes 
 
 ## Installation
 
-1. Ouvre la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et télécharge `JDAudiobook-1.3.0.apk` sur ton téléphone.
+1. Ouvre la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et télécharge `JDAudiobook-1.3.1.apk` sur ton téléphone.
 2. Ouvre le fichier. Android te demandera d'autoriser l'installation depuis cette source (navigateur ou gestionnaire de fichiers) : accepte.
 3. Lance l'appli, ouvre le menu (**icône engrenage**, en haut à droite) → **Choisir le dossier des livres**. Autorise l'accès, y compris en écriture (nécessaire pour la progression et les pochettes).
 

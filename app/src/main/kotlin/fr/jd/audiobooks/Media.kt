@@ -35,9 +35,18 @@ object Chapters {
         } ?: emptyList()
     } catch (e: Exception) { logw("chapitres illisibles", e); emptyList() }
 
+    /**
+     * Une liste de chapitres n'a de sens que si elle découpe vraiment le fichier : au moins 2 chapitres, à des instants
+     * tous différents. Certains fichiers portent des chapitres bidon (tous à 0:00:00, ou un seul) : on les ignore.
+     */
+    internal fun usable(list: List<Chap>): List<Chap> {
+        val sorted = list.sortedBy { it.startMs }.distinctBy { it.startMs }
+        return if (sorted.size >= 2) sorted else emptyList()
+    }
+
     /** Choisit le lecteur selon le contenu (balise ID3 en tête = MP3), pas selon l'extension. */
     internal fun readChannel(ch: FileChannel): List<Chap> = try {
-        if (hasId3(ch)) readId3(ch) else readMp4(ch)
+        usable(if (hasId3(ch)) readId3(ch) else readMp4(ch))
     } catch (e: Exception) { logw("chapitres illisibles", e); emptyList() }
     catch (e: OutOfMemoryError) { logw("chapitres : fichier trop gros", e); emptyList() }
 

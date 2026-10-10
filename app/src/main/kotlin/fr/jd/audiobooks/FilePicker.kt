@@ -60,7 +60,11 @@ fun shortNames(names: List<String>): Pair<String, List<String>> {
 }
 
 @Composable
-fun FilePickerDialog(bk: Book, durs: List<Long>, current: Int, store: Store, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+fun FilePickerDialog(
+    bk: Book, durs: List<Long>, current: Int, store: Store,
+    chaps: List<Chap> = emptyList(), chapIdx: Int = 0,
+    onPick: (Int) -> Unit, onPickChap: (Long) -> Unit = {}, onDismiss: () -> Unit
+) {
     var showDur by remember { mutableStateOf(store.flag("pick_dur", true)) }
     var showPos by remember { mutableStateOf(store.flag("pick_pos", false)) }
     val (prefix, shorts) = remember(bk.path) { shortNames(bk.names) }
@@ -95,7 +99,7 @@ fun FilePickerDialog(bk: Book, durs: List<Long>, current: Int, store: Store, onP
                     modifier = Modifier.padding(top = 4.dp)
                 )
                 Spacer(Modifier.height(8.dp))
-                LazyColumn(Modifier.heightIn(max = 380.dp), state = state) {
+                LazyColumn(Modifier.heightIn(max = if (chaps.isEmpty()) 380.dp else 170.dp), state = state) {
                     itemsIndexed(shorts) { i, name ->
                         val cur = i == current
                         val col = if (cur) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -126,6 +130,29 @@ fun FilePickerDialog(bk: Book, durs: List<Long>, current: Int, store: Store, onP
                     Spacer(Modifier.width(12.dp))
                     Checkbox(showPos, { showPos = it; store.setFlag("pick_pos", it) })
                     Text(stringResource(R.string.position), Modifier.clickable { showPos = !showPos; store.setFlag("pick_pos", showPos) })
+                }
+                // Chapitres du fichier en cours (m4b, mp3 à chapitres) : toucher un chapitre y saute directement.
+                if (chaps.isNotEmpty()) {
+                    HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    Text(stringResource(R.string.chapters), style = MaterialTheme.typography.titleSmall)
+                    val chapState = rememberLazyListState(initialFirstVisibleItemIndex = (chapIdx - 2).coerceAtLeast(0))
+                    LazyColumn(Modifier.heightIn(max = 230.dp), state = chapState) {
+                        itemsIndexed(chaps) { i, c ->
+                            val cur = i == chapIdx
+                            val col = if (cur) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            Row(
+                                Modifier.fillMaxWidth().clickable { onPickChap(c.startMs) }.padding(vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(fmt(c.startMs), Modifier.width(68.dp), style = MaterialTheme.typography.labelMedium, color = col)
+                                Text(
+                                    c.title, Modifier.weight(1f), color = col,
+                                    fontWeight = if (cur) FontWeight.Bold else FontWeight.Normal,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },

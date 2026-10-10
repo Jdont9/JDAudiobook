@@ -2,6 +2,13 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.3.1
+**Fixes**
+- Bogus chapter lists are ignored: a chapter list must have at least 2 chapters at different instants. Some split MP3s carry chapters that all sit at 0:00:00, which showed "Chapter 2/2" on a file that is not really chaptered. The same rule applies to `m4b`/`m4a` (a single chapter is ignored).
+
+**Changes**
+- The chapter list no longer sits under the cover (the cover is always full size): it is now in the menu under the player (the file row with the arrow), below the file list, for `m4b` and `mp3` alike. The current chapter is highlighted and tapping one jumps to it.
+
 ## 1.3.0
 **New**
 - **Chapters in MP3 files.** MP3s that carry ID3v2.3/2.4 chapters (`CHAP` frames, the kind written by Mp3tag or Chapter and Verse) now show their chapter list in the player, with chapter-aware previous/next and a "Chapter n/N" line. A chapter without a title is shown as "Chapter N". The same safety limits as for `m4b` apply (bounded sizes, a suspicious tag simply shows no chapters).

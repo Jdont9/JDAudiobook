@@ -109,8 +109,23 @@ class ChaptersTest {
 
     @Test fun unsynchronisedTagIsDecoded() {
         // 255 ms = 00 00 00 FF : l'octet FF reçoit un 00 derrière lui dans une balise « désynchronisée »
-        val frames = chap(255L, tit2("A".toByteArray(), 0, false), false, unsyncBody = true)
-        assertEquals(listOf(Chap(255L, "A")), read(id3(3, frames, flags = 0x80)))
+        val frames = chap(255L, tit2("A".toByteArray(), 0, false), false, unsyncBody = true) +
+            chap(5_000L, tit2("B".toByteArray(), 0, false), false, unsyncBody = true)
+        assertEquals(listOf(Chap(255L, "A"), Chap(5_000L, "B")), read(id3(3, frames, flags = 0x80)))
+    }
+
+    @Test fun bogusChapterListsAreIgnored() {
+        // Cas réel : un MP3 découpé dont les deux frames CHAP (« Chapter 5 », « Chapter 6 ») sont à 0:00:00.
+        val twoAtZero = chap(0L, tit2("Chapter 5".toByteArray(), 0, false), false) + chap(0L, tit2("Chapter 6".toByteArray(), 0, false), false)
+        assertTrue(read(id3(3, twoAtZero)).isEmpty())
+        // Un seul chapitre ne découpe rien non plus.
+        assertTrue(read(id3(3, chap(0L, tit2("Seul".toByteArray(), 0, false), false))).isEmpty())
+        // Même règle pour les m4b : un chapitre unique est ignoré.
+        assertTrue(read(box("moov", box("udta", chpl(0L to "Unique")))).isEmpty())
+        // Doublons d'instant : on garde le premier, et il en reste assez pour avoir du sens.
+        val dup = chap(0L, tit2("A".toByteArray(), 0, false), false) + chap(0L, tit2("A bis".toByteArray(), 0, false), false) +
+            chap(9_000L, tit2("B".toByteArray(), 0, false), false)
+        assertEquals(listOf(Chap(0L, "A"), Chap(9_000L, "B")), read(id3(3, dup)))
     }
 
     @Test fun id3WithoutUsableChaptersGivesNothing() {
