@@ -118,6 +118,12 @@ class ChaptersTest {
         // Cas réel : un MP3 découpé dont les deux frames CHAP (« Chapter 5 », « Chapter 6 ») sont à 0:00:00.
         val twoAtZero = chap(0L, tit2("Chapter 5".toByteArray(), 0, false), false) + chap(0L, tit2("Chapter 6".toByteArray(), 0, false), false)
         assertTrue(read(id3(3, twoAtZero)).isEmpty())
+        // Plusieurs chapitres, mais tous dans la première seconde (affichés « 0:00:00 ») : cas réel, ignorés eux aussi.
+        val withinSecond = chap(0L, tit2("Chapter 5".toByteArray(), 0, false), false) + chap(120L, tit2("Chapter 6".toByteArray(), 0, false), false)
+        assertTrue(read(id3(3, withinSecond)).isEmpty())
+        // Une seconde pile d'écart suffit.
+        val oneSecond = chap(0L, tit2("A".toByteArray(), 0, false), false) + chap(1_000L, tit2("B".toByteArray(), 0, false), false)
+        assertEquals(listOf(Chap(0L, "A"), Chap(1_000L, "B")), read(id3(3, oneSecond)))
         // Un seul chapitre ne découpe rien non plus.
         assertTrue(read(id3(3, chap(0L, tit2("Seul".toByteArray(), 0, false), false))).isEmpty())
         // Même règle pour les m4b : un chapitre unique est ignoré.

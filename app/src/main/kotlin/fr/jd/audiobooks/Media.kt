@@ -35,13 +35,17 @@ object Chapters {
         } ?: emptyList()
     } catch (e: Exception) { logw("chapitres illisibles", e); emptyList() }
 
+    private const val MIN_GAP_MS = 1_000L
+
     /**
-     * Une liste de chapitres n'a de sens que si elle découpe vraiment le fichier : au moins 2 chapitres, à des instants
-     * tous différents. Certains fichiers portent des chapitres bidon (tous à 0:00:00, ou un seul) : on les ignore.
+     * Une liste de chapitres n'a de sens que si elle découpe vraiment le fichier : au moins 2 chapitres, séparés d'au moins
+     * une seconde. Certains fichiers portent des chapitres bidon (un seul, ou tous dans la première seconde : l'écran les
+     * affiche alors tous à 0:00:00) : on les ignore. Un chapitre trop proche du précédent est écarté (le premier reste).
      */
     internal fun usable(list: List<Chap>): List<Chap> {
-        val sorted = list.sortedBy { it.startMs }.distinctBy { it.startMs }
-        return if (sorted.size >= 2) sorted else emptyList()
+        val kept = ArrayList<Chap>()
+        for (c in list.sortedBy { it.startMs }) if (kept.isEmpty() || c.startMs - kept.last().startMs >= MIN_GAP_MS) kept += c
+        return if (kept.size >= 2) kept else emptyList()
     }
 
     /** Choisit le lecteur selon le contenu (balise ID3 en tête = MP3), pas selon l'extension. */

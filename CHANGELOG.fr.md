@@ -2,6 +2,10 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.3.2
+**Corrections**
+- Les chapitres séparés de moins d'une seconde sont ignorés. Certains MP3 portent des chapitres dont les débuts tombent tous dans la première seconde (affichés 0:00:00) ; la 1.3.1 ne repérait que les instants identiques, si bien qu'un tel fichier affichait encore « Chapitre 2/2 » et une liste de chapitres. Il se comporte maintenant comme le fichier sans chapitres qu'il est.
+
 ## 1.3.1
 **Corrections**
 - Les listes de chapitres bidon sont ignorées : il faut au moins 2 chapitres à des instants différents. Certains MP3 découpés portent des chapitres tous à 0:00:00, ce qui affichait « Chapitre 2/2 » sur un fichier qui n'a pas vraiment de chapitres. La même règle s'applique aux `m4b`/`m4a` (un chapitre unique est ignoré).

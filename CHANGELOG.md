@@ -2,6 +2,10 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.3.2
+**Fixes**
+- Chapters less than one second apart are ignored. Some MP3s carry chapters whose start times all fall within the first second (shown as 0:00:00); 1.3.1 only caught identical times, so such a file still showed "Chapter 2/2" and a chapter list. Such a file now behaves as the unchaptered file it is.
+
 ## 1.3.1
 **Fixes**
 - Bogus chapter lists are ignored: a chapter list must have at least 2 chapters at different instants. Some split MP3s carry chapters that all sit at 0:00:00, which showed "Chapter 2/2" on a file that is not really chaptered. The same rule applies to `m4b`/`m4a` (a single chapter is ignored).
