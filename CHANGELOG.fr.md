@@ -2,6 +2,11 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.4.0
+**Nouveauté**
+- Égaliseur : un bouton dans le lecteur (à côté du gain de volume) ouvre une liste de 11 presets tirés du guide des réglages d'Equalizer APO (voix, dialogues en avant, vieux enregistrements, écoute de nuit, aigus fatigants, équilibré, et des corrections pour écouteurs, intra-auriculaires, casques ouvert/fermé et petits haut-parleurs). Une courbe montre la forme du preset, et le son change dès le toucher. Le choix est mémorisé par livre. C'est un vrai égaliseur paramétrique (filtres en cloche, plateaux et passe-haut), identique sur tous les téléphones.
+- Égaliseur : en plus des presets, une courbe **Personnalisé** à 10 bandes (de 31 Hz à 16 kHz, de −12 à +12 dB). On fait glisser les barres, un double toucher remet une barre à zéro. La courbe suit en direct et le pré-ampli baisse tout seul pour que le son ne puisse pas saturer. La courbe personnalisée est partagée par tous les livres qui la choisissent.
+
 ## 1.3.4
 **Nouveautés**
 - Lecteur : un bouton pour changer la pochette. On colle un lien (image ou page du livre), puis on cadre l'image dans un carré (glisser, pincer) avant d'enregistrer.

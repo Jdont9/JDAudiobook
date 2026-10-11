@@ -293,7 +293,8 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         Skip.load(store)
-        val p = ExoPlayer.Builder(this)
+        Eq.setCustom(store.eqCustom())
+        val p = ExoPlayer.Builder(this, EqRenderersFactory(this, Eq.newProcessor()))
             .setAudioAttributes(AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).setUsage(C.USAGE_MEDIA).build(), true)
             .setHandleAudioBecomingNoisy(true)
             // Garde le processeur éveillé pendant la lecture écran éteint (fichiers locaux) : sans ça, certains
@@ -306,8 +307,8 @@ class PlaybackService : MediaLibraryService() {
             override fun onPlaybackStateChanged(state: Int) { if (state == Player.STATE_ENDED) bookEnded() }
             // Retour arrière automatique à la reprise, proportionnel à la durée de pause
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                // Gain de volume réglé pour ce livre.
-                mediaItem?.mediaMetadata?.extras?.getString("path")?.let { Boost.set(store.boost(it)) }
+                // Gain de volume et preset d'égaliseur réglés pour ce livre.
+                mediaItem?.mediaMetadata?.extras?.getString("path")?.let { Boost.set(store.boost(it)); Eq.select(store.eq(it)) }
                 // Changement de fichier en cours de lecture (pas le simple chargement d'une playlist).
                 if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) persist(true)
             }
@@ -366,6 +367,7 @@ class PlaybackService : MediaLibraryService() {
         persist(true)
         Sleep.cancel()
         Boost.release()
+        Eq.release()
         self = null
         h.removeCallbacksAndMessages(null)
         scope.cancel()

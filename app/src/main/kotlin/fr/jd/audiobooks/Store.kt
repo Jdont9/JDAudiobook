@@ -125,6 +125,14 @@ class Store(private val ctx: Context) {
     fun boost(path: String): Int = p.getInt("boost_$path", 0)
     fun setBoost(path: String, db: Int) = p.edit().putInt("boost_$path", db).apply()
 
+    // Preset d'égaliseur par livre (identifiant de EqPresets ; vide = coupé)
+    fun eq(path: String): String = p.getString("eqp_$path", "") ?: ""
+    fun setEq(path: String, id: String) = p.edit().putString("eqp_$path", id).apply()
+
+    // Courbe d'égaliseur personnalisée (10 gains en dB, commune à tous les livres qui la choisissent)
+    fun eqCustom(): List<Double> = EqCustom.parse(p.getString("eqc", null))
+    fun setEqCustom(g: List<Double>) = p.edit().putString("eqc", EqCustom.serialize(g)).apply()
+
     // Durée du saut avant/arrière (secondes)
     fun skipSeconds(): Int = p.getInt("skip_s", 30)
     fun setSkipSeconds(s: Int) = p.edit().putInt("skip_s", s).apply()

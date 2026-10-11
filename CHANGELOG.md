@@ -2,6 +2,11 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.4.0
+**New**
+- Equalizer: a button in the player (next to the volume boost) opens a list of 11 presets taken from the Equalizer APO settings guide (speech, dialogue clarity, old recordings, night listening, treble fatigue, balanced, and corrections for earbuds, in-ears, open/closed headphones and small speakers). A curve shows the shape of the preset, and the sound changes as soon as you tap. The choice is remembered per book. It is a true parametric equalizer (peak, shelf and high-pass filters), identical on every phone.
+- Equalizer: besides the presets, a **Custom** curve with 10 bands (31 Hz to 16 kHz, −12 to +12 dB). Drag the bars, double-tap a bar to reset it. The curve updates live and the preamp is lowered automatically so the sound cannot distort. The custom curve is shared by every book that picks it.
+
 ## 1.3.4
 **New**
 - Player: a button to change the cover. Paste a link (image or book page), then frame it in a square (drag and pinch) before saving.

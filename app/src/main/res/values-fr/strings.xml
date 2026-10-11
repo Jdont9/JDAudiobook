@@ -105,4 +105,21 @@
     <string name="paste">Coller</string>
     <string name="crop_hint">Glissez et pincez pour cadrer le carré.</string>
     <string name="save">Enregistrer</string>
+    <string name="equalizer">Égaliseur</string>
+    <string name="eq_hint">S\'applique à ce livre uniquement. Les presets baissent un peu le niveau pour éviter la distorsion : utilise le gain de volume pour compenser.</string>
+    <string name="eq_preamp">Pré-ampli %1$s dB</string>
+    <string name="eq_p_speech">Voix (livres audio, podcasts)</string>
+    <string name="eq_p_dialogue">Dialogues en avant</string>
+    <string name="eq_p_old">Vieux enregistrements</string>
+    <string name="eq_p_night">Écoute de nuit</string>
+    <string name="eq_p_fatigue">Aigus fatigants</string>
+    <string name="eq_p_balanced">Équilibré</string>
+    <string name="eq_p_earbuds">Écouteurs bas de gamme</string>
+    <string name="eq_p_laptop">Petits haut-parleurs (téléphone, PC)</string>
+    <string name="eq_p_closed">Casque fermé (en V)</string>
+    <string name="eq_p_open">Casque ouvert</string>
+    <string name="eq_p_iem">Intra-auriculaires aux aigus durs</string>
+    <string name="eq_custom">Personnalisé (10 bandes)</string>
+    <string name="eq_reset">Réinitialiser</string>
+    <string name="eq_custom_hint">Fais glisser les barres (de −12 à +12 dB), double toucher pour remettre une barre à zéro. Le pré-ampli s\'ajuste tout seul. Cette courbe est commune à tous les livres qui l\'utilisent.</string>
 </resources>

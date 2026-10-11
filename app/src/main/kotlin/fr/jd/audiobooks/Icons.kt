@@ -37,6 +37,7 @@ object JdIcons {
     val Close by lazy { icon("Close", "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z") }
     val Image by lazy { icon("Image", "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z") }
     val Bookmark by lazy { icon("Bookmark", "M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z") }
+    val Equalizer by lazy { icon("Equalizer", "M10 20h4V4h-4v16zm-6 0h4v-8H4v8zM16 9v11h4V9h-4z") }
     val GraphicEq by lazy { icon("GraphicEq", "M7 18h2V6H7v12zm4 4h2V2h-2v20zm-8-8h2v-4H3v4zm12 4h2V6h-2v12zm4-8v4h2v-4h-2z") }
 }
 

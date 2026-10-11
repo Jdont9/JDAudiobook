@@ -37,6 +37,9 @@ fun PlayerScreen(bk: Book, store: Store, onCoverChanged: (String?) -> Unit, back
     var tick by remember { mutableStateOf(0) }
     var boost by remember { mutableStateOf(store.boost(bk.path)) }
     var boostMenu by remember { mutableStateOf(false) }
+    var eqId by remember { mutableStateOf(store.eq(bk.path)) }
+    var eqMenu by remember { mutableStateOf(false) }
+    var eqGains by remember { mutableStateOf(store.eqCustom()) }
     var chaps by remember { mutableStateOf(listOf<Chap>()) }
     var speedMenu by remember { mutableStateOf(false) }
     var sleepMenu by remember { mutableStateOf(false) }
@@ -177,6 +180,12 @@ fun PlayerScreen(bk: Book, store: Store, onCoverChanged: (String?) -> Unit, back
                 Icon(JdIcons.ArrowDropDown, contentDescription = stringResource(R.string.choose_file))
             }
             if (showBookmarks) BookmarksDialog(bk, store, p) { showBookmarks = false }
+            if (eqMenu) EqDialog(
+                eqId, eqGains,
+                onPick = { id -> eqId = id; Eq.select(id); store.setEq(bk.path, id) },
+                onGains = { g, commit -> eqGains = g; Eq.setCustom(g); if (commit) store.setEqCustom(g) },
+                onDismiss = { eqMenu = false }
+            )
             if (showFiles) FilePickerDialog(
                 bk, durs, fi, store, chaps = chaps, chapIdx = ci,
                 onPick = { p.seekTo(it, 0); showFiles = false },
@@ -225,7 +234,7 @@ fun PlayerScreen(bk: Book, store: Store, onCoverChanged: (String?) -> Unit, back
                     if (n != null) p.seekTo(n.startMs) else p.seekToNextMediaItem()
                 }) { Icon(JdIcons.SkipNext, contentDescription = stringResource(R.string.next), Modifier.size(28.dp)) }
             }
-            // Réglages : vitesse, minuterie de sommeil, saut des silences, volume (une seule rangée d'icônes)
+            // Réglages : vitesse, minuterie de sommeil, saut des silences, égaliseur, volume (une seule rangée d'icônes)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
                     OutlinedButton({ speedMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { Text("×${p.playbackParameters.speed}", maxLines = 1) }
@@ -255,6 +264,11 @@ fun PlayerScreen(bk: Book, store: Store, onCoverChanged: (String?) -> Unit, back
                     { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Icon(JdIcons.GraphicEq, contentDescription = stringResource(R.string.skip_silence), Modifier.size(20.dp)) } },
                     Modifier.weight(1f)
                 )
+                Box(Modifier.weight(1f)) {
+                    val eqBtn: @Composable () -> Unit = { Icon(JdIcons.Equalizer, contentDescription = stringResource(R.string.equalizer), Modifier.size(20.dp)) }
+                    if (eqId.isNotEmpty()) FilledTonalButton({ eqMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { eqBtn() }
+                    else OutlinedButton({ eqMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { eqBtn() }
+                }
                 Box(Modifier.weight(1f)) {
                     val volBtn: @Composable () -> Unit = {
                         Icon(JdIcons.VolumeUp, contentDescription = stringResource(R.string.volume_boost), Modifier.size(20.dp))

@@ -105,4 +105,21 @@
     <string name="paste">Paste</string>
     <string name="crop_hint">Drag and pinch to frame the square.</string>
     <string name="save">Save</string>
+    <string name="equalizer">Equalizer</string>
+    <string name="eq_hint">Applies to this book only. Presets lower the level a little to avoid distortion: use the volume boost to compensate.</string>
+    <string name="eq_preamp">Preamp %1$s dB</string>
+    <string name="eq_p_speech">Speech (audiobooks, podcasts)</string>
+    <string name="eq_p_dialogue">Dialogue clarity</string>
+    <string name="eq_p_old">Old recordings</string>
+    <string name="eq_p_night">Night listening</string>
+    <string name="eq_p_fatigue">Treble fatigue</string>
+    <string name="eq_p_balanced">Balanced</string>
+    <string name="eq_p_earbuds">Cheap earbuds</string>
+    <string name="eq_p_laptop">Small speakers (phone, laptop)</string>
+    <string name="eq_p_closed">Closed-back headphones (V-shaped)</string>
+    <string name="eq_p_open">Open-back headphones</string>
+    <string name="eq_p_iem">In-ears with harsh treble</string>
+    <string name="eq_custom">Custom (10 bands)</string>
+    <string name="eq_reset">Reset</string>
+    <string name="eq_custom_hint">Drag the bars (−12 to +12 dB), double-tap a bar to reset it. The preamp adjusts itself. This curve is shared by every book that uses it.</string>
 </resources>
