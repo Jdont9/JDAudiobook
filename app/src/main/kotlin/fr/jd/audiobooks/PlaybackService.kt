@@ -178,10 +178,9 @@ class PlaybackService : MediaLibraryService() {
         return Loaded(items, idx, pos, saved?.speed ?: 1f)
     }
 
-    /** Sauts fixes proposés en plus du saut réglable : identifiant de commande, secondes (négatif = arrière), icône. */
+    /** Sauts fixes proposés en plus du saut réglable (deux seulement : Android Auto ne laisse la place qu'à deux boutons) : identifiant de commande, secondes (négatif = arrière), icône. */
     private val customActions = listOf(
-        Triple("jd_back30", -30, R.drawable.ic_back30), Triple("jd_back10", -10, R.drawable.ic_back10),
-        Triple("jd_fwd10", 10, R.drawable.ic_fwd10), Triple("jd_fwd30", 30, R.drawable.ic_fwd30)
+        Triple("jd_back10", -10, R.drawable.ic_back10), Triple("jd_fwd10", 10, R.drawable.ic_fwd10)
     )
 
     private fun customLayout(): ImmutableList<CommandButton> = ImmutableList.copyOf(customActions.map { (id, sec, icon) ->
@@ -195,7 +194,7 @@ class PlaybackService : MediaLibraryService() {
         // la bibliothèque ou piloter la lecture : une autre appli installée ne peut plus lister tes livres.
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
             if (isAllowedClient(controller)) {
-                // Boutons ±10 s / ±30 s (Android Auto, notification) : commandes personnalisées à déclarer au client.
+                // Boutons ±10 s (Android Auto, notification) : commandes personnalisées à déclarer au client.
                 val cmds = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                     .apply { customActions.forEach { add(SessionCommand(it.first, Bundle.EMPTY)) } }.build()
                 MediaSession.ConnectionResult.AcceptedResultBuilder(session).setAvailableSessionCommands(cmds).build()

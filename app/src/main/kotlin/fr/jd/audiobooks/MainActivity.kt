@@ -42,6 +42,13 @@ class OpenTreeRW : ActivityResultContracts.OpenDocumentTree() {
 
 fun fmt(ms: Long): String { val s = ms / 1000; return "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) }
 
+/**
+ * Livre à rouvrir au lancement : celui déjà chargé dans le lecteur (lecture en cours depuis Android Auto, par ex.),
+ * sinon le dernier livre écouté. null = bibliothèque.
+ */
+private fun startupBook(store: Store): String? =
+    PlaybackService.player?.currentMediaItem?.mediaMetadata?.extras?.getString("path") ?: store.lastBook()
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -74,10 +81,11 @@ fun App(store: Store) {
     }
     var scanProgress by remember { mutableStateOf<ScanProgress?>(null) }
     // État conservé à la rotation de l'écran (et à la recréation de l'activité) : livre ouvert, écran affiché, recherche, tri.
-    var curPath by rememberSaveable { mutableStateOf<String?>(null) }
+    // Au lancement (pas à la rotation : l'état sauvegardé prime), l'appli s'ouvre sur l'écran lecteur du dernier livre écouté.
+    var curPath by rememberSaveable { mutableStateOf<String?>(startupBook(store)) }
     val cur = books.firstOrNull { it.path == curPath }
     var showStats by rememberSaveable { mutableStateOf(false) }
-    var showPlayer by rememberSaveable { mutableStateOf(false) }
+    var showPlayer by rememberSaveable { mutableStateOf(curPath != null) }
     var query by rememberSaveable { mutableStateOf("") }
     var sortRecent by rememberSaveable { mutableStateOf(store.flag("sort_recent")) }
     var importMsg by remember { mutableStateOf<String?>(null) }
@@ -191,6 +199,12 @@ fun App(store: Store) {
     LaunchedEffect(books.isNotEmpty()) {
         val c = cur
         if (showPlayer && c != null && !isLoaded(PlaybackService.player, c)) open(c)
+    }
+    // Le dernier livre n'existe plus dans la bibliothèque (dossier supprimé ou changé) : on affiche la bibliothèque.
+    LaunchedEffect(cacheLoaded, books, scanProgress) {
+        if (cacheLoaded && scanProgress == null && showPlayer && curPath != null && books.none { it.path == curPath }) {
+            showPlayer = false; curPath = null
+        }
     }
     BackHandler(enabled = showPlayer || showStats) { if (showPlayer) leavePlayer() else showStats = false }
     val b = cur

@@ -2,6 +2,11 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.4.1
+**Nouveauté**
+- Android Auto et notification : seuls les boutons −10 s et +10 s sont conservés (les boutons −30 s et +30 s sont retirés).
+- L'appli s'ouvre maintenant directement sur le lecteur du dernier livre écouté (ou de celui déjà en lecture, par exemple lancé depuis Android Auto), en pause à ta position enregistrée. Le bouton retour mène à la bibliothèque.
+
 ## 1.4.0
 **Nouveauté**
 - Égaliseur : un bouton dans le lecteur (à côté du gain de volume) ouvre une liste de 11 presets tirés du guide des réglages d'Equalizer APO (voix, dialogues en avant, vieux enregistrements, écoute de nuit, aigus fatigants, équilibré, et des corrections pour écouteurs, intra-auriculaires, casques ouvert/fermé et petits haut-parleurs). Une courbe montre la forme du preset, et le son change dès le toucher. Le choix est mémorisé par livre. C'est un vrai égaliseur paramétrique (filtres en cloche, plateaux et passe-haut), identique sur tous les téléphones.
