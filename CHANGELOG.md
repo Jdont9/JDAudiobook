@@ -2,6 +2,13 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.4.2
+**New**
+- Sleep timer: shake the phone while it is running (fade-out included) to restart it for the same duration. A short vibration confirms it. The motion sensor is only listened to while a timed sleep timer is running.
+- Bookmarks: an optional note when adding one, and a ✎ button to edit it later. The note replaces the file name as the main line of the bookmark in the list.
+- New permission: vibration (normal permission, nothing to accept).
+- Bookmarks (with their notes) are now saved in the book's `position.jd.json`, next to the position, speed and "finished" state. They follow the folder when you copy or sync it to another phone. The newest file wins as a whole, like the position. Bookmarks you already have are written to the file the next time the book is saved.
+
 ## 1.4.1
 **New**
 - Android Auto and notification: only the −10 s and +10 s buttons are kept (the −30 s and +30 s ones are removed).

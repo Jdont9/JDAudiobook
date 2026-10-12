@@ -122,4 +122,6 @@
     <string name="eq_custom">Personnalisé (10 bandes)</string>
     <string name="eq_reset">Réinitialiser</string>
     <string name="eq_custom_hint">Fais glisser les barres (de −12 à +12 dB), double toucher pour remettre une barre à zéro. Le pré-ampli s\'ajuste tout seul. Cette courbe est commune à tous les livres qui l\'utilisent.</string>
+    <string name="bookmark_note_title">Note du signet</string>
+    <string name="bookmark_note_hint">Note (facultatif)</string>
 </resources>

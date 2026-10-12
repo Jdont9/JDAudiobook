@@ -18,8 +18,8 @@ android {
         applicationId = "fr.jd.audiobooks"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "1.4.1"
+        versionCode = 13
+        versionName = "1.4.2"
     }
     signingConfigs {
         create("release") {

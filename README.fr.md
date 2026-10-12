@@ -4,7 +4,7 @@
 
 Lecteur de livres audio pour Android, simple et rapide, qui lit directement vos fichiers (MP3, M4B…) depuis un dossier de votre téléphone. Pas de compte, pas de publicité, pas de suivi.
 
-Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.4.1**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
+Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.4.2**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
 
 > 🤖 **Projet réalisé par une IA.** Le code, la documentation et les scripts de ce dépôt ont été écrits par une intelligence artificielle (Claude, d'Anthropic) à partir des demandes et des retours du propriétaire du projet, qui a dirigé le développement et utilise l'appli. Comme tout logiciel, elle peut contenir des erreurs : elle est fournie telle quelle, sans garantie.
 
@@ -22,8 +22,8 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement vos 
 
 **Lecteur**
 - Saut avant/arrière de **10, 15, 30, 45 ou 60 s** (menu → Durée du saut ; aussi utilisé par la notification et Android Auto), fichier précédent/suivant, accès direct à n'importe quel fichier du livre.
-- **Signets** par livre (icône signet dans le lecteur) : ajouter la position actuelle, y revenir, les supprimer.
-- Vitesse de ×0,75 à ×3, minuterie de sommeil (10 à 90 min, avec un fondu sonore de 15 s, ou **fin du fichier en cours**), saut des silences, gain de volume de +3 à +12 dB (mémorisé par livre), et un **égaliseur paramétrique** avec 11 presets (voix, dialogues, vieux enregistrements, écoute de nuit, corrections de casque…) ou ta propre courbe à 10 bandes, au choix par livre.
+- **Signets** par livre (icône signet dans le lecteur) : ajouter la position actuelle avec une note facultative, y revenir, modifier la note, les supprimer.
+- Vitesse de ×0,75 à ×3, minuterie de sommeil (10 à 90 min, avec un fondu sonore de 15 s, ou **fin du fichier en cours** ; secouer le téléphone relance une minuterie en cours), saut des silences, gain de volume de +3 à +12 dB (mémorisé par livre), et un **égaliseur paramétrique** avec 11 presets (voix, dialogues, vieux enregistrements, écoute de nuit, corrections de casque…) ou ta propre courbe à 10 bandes, au choix par livre.
 - Chapitres pour les fichiers `m4b`/`m4a` et pour les `mp3` qui portent des chapitres ID3 (frames `CHAP`) : précédent/suivant sautent de chapitre en chapitre, et la liste des chapitres est dans le menu sous le lecteur (la ligne du fichier, avec la flèche), à côté de la liste des fichiers. Les listes de chapitres bidon (un seul chapitre, ou des chapitres séparés de moins d'une seconde) sont ignorées.
 - L'appli **s'ouvre sur le lecteur du dernier livre écouté** (en pause à la position enregistrée) ; le bouton retour mène à la bibliothèque.
 - **Mini-lecteur** en bas de la bibliothèque dès qu'un livre est chargé : pochette, titre, recul (durée du saut), lecture/pause, fermer. Un appui rouvre le lecteur sans rien recharger.
@@ -37,7 +37,7 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement vos 
 
 ## Installation
 
-1. Ouvrez la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et téléchargez `JDAudiobook-1.4.1.apk` sur votre téléphone.
+1. Ouvrez la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et téléchargez `JDAudiobook-1.4.2.apk` sur votre téléphone.
 2. Ouvrez le fichier. Android vous demandera d'autoriser l'installation depuis cette source (navigateur ou gestionnaire de fichiers) : acceptez.
 3. Lancez l'appli, ouvrez le menu (**icône engrenage**, en haut à droite) → **Choisir le dossier des livres**. Autorisez l'accès, y compris en écriture (nécessaire pour la progression et les pochettes).
 
@@ -77,7 +77,7 @@ Un dossier = un livre. Le nom du dossier sert de titre, et de base à la recherc
 
 | Fichier | Rôle |
 |---|---|
-| `position.jd.json` | Progression du livre (fichier, position, vitesse, lu/non lu, date), lisible et modifiable à la main. Écrit à la pause, au changement de fichier, toutes les 60 s en lecture et en quittant le lecteur. S'il est plus récent que la sauvegarde locale, il est appliqué à l'ouverture et au rescan. |
+| `position.jd.json` | Progression du livre (fichier, position, vitesse, lu/non lu, signets avec leurs notes, date), lisible et modifiable à la main. Écrit à la pause, au changement de fichier, toutes les 60 s en lecture et en quittant le lecteur. S'il est plus récent que la sauvegarde locale, il est appliqué à l'ouverture et au rescan. |
 | `cover.jpg` | Pochette téléchargée. |
 
 Les fichiers de Smart AudioBook Player (`position.sabp.dat`) ne sont jamais modifiés.
@@ -86,7 +86,7 @@ Les fichiers de Smart AudioBook Player (`position.sabp.dat`) ne sont jamais modi
 
 - Aucune donnée n'est envoyée à l'auteur ; aucun compte, aucune statistique d'usage, aucune publicité.
 - Les seuls accès réseau sont ceux que vous déclenchez vous-même : la recherche de pochettes (le **titre du livre**, c'est-à-dire le nom du dossier, est envoyé à iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books et Open Library) et la vérification de mise à jour (une requête vers `api.github.com`, qui, comme toute requête web, expose votre adresse IP à GitHub). Rien ne tourne en arrière-plan.
-- Permissions : lecture en arrière-plan (service de premier plan), notifications, maintien de l'appareil éveillé pendant la lecture (le processeur seulement, et seulement tant que le son joue), Internet (recherche de pochettes et vérification de mise à jour uniquement). L'accès aux fichiers passe par le sélecteur de dossier d'Android, limité au dossier que vous choisissez.
+- Permissions : lecture en arrière-plan (service de premier plan), notifications, maintien de l'appareil éveillé pendant la lecture (le processeur seulement, et seulement tant que le son joue), Internet (recherche de pochettes et vérification de mise à jour uniquement), vibration (courte confirmation quand on secoue le téléphone pour relancer la minuterie de sommeil). L'accès aux fichiers passe par le sélecteur de dossier d'Android, limité au dossier que vous choisissez.
 - Les autres applications ne peuvent ni parcourir votre bibliothèque ni piloter la lecture : le service média n'accepte que l'appli elle-même, le système (écran de verrouillage, Bluetooth), Android Auto, l'Assistant Google, Android Automotive et Wear OS. Les commandes du widget portent un jeton secret qui ne quitte jamais l'appli.
 - Sauvegarde Android : si la sauvegarde d'Android est activée sur votre téléphone, votre **progression, vos vitesses, vos signets et vos statistiques d'écoute** sont inclus dans votre sauvegarde Google (jamais l'audio, les pochettes ni la bibliothèque). Pour vous y opposer, désactivez la sauvegarde dans les réglages d'Android.
 
@@ -124,6 +124,7 @@ Les textes de l'interface sont dans les ressources Android : `app/src/main/res/v
 | `Util.kt` | Utilitaires partagés : journal, vitesse de lecture sûre, lectures bornées, rafraîchissement de l'écran qui se met en pause en arrière-plan |
 | `CoverProvider.kt` | Sert les pochettes (URI) à la notification, à Android Auto et au widget |
 | `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Gain de volume, widget, sélecteurs, icônes, thème |
+| `Shake.kt` | Détection de secousse pour la minuterie de sommeil (accéléromètre, seulement pendant qu'une minuterie tourne) |
 | `Eq.kt`, `EqDialog.kt` | Égaliseur : filtres biquad dans la chaîne de sortie audio, lecture du format Equalizer APO, liste des presets et sélecteur |
 
 Remarque : les commentaires du code source sont en grande partie en français.

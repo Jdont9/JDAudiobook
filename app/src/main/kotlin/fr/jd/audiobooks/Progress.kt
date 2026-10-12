@@ -15,7 +15,7 @@ import org.json.JSONObject
 object ProgressFile {
     const val NAME = "position.jd.json"
 
-    data class Data(val index: Int, val file: String?, val pos: Long, val speed: Float, val finished: Boolean, val updated: Long)
+    data class Data(val index: Int, val file: String?, val pos: Long, val speed: Float, val finished: Boolean, val updated: Long, val bookmarks: List<Bookmark>? = null)
 
     private val lock = Any()
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO) // indépendant de l'UI et du service
@@ -28,15 +28,17 @@ object ProgressFile {
             Data(
                 it.getInt("index").coerceAtLeast(0), it.optString("file", "").ifEmpty { null }, it.getLong("pos").coerceAtLeast(0L),
                 safeSpeed(it.optDouble("speed", 1.0).toFloat()), it.optBoolean("finished", false),
-                it.optLong("updated", 0L).coerceIn(0L, now + 24L * 3600 * 1000)
+                it.optLong("updated", 0L).coerceIn(0L, now + 24L * 3600 * 1000),
+                it.optJSONArray("bookmarks")?.let { a -> BookmarkCodec.fromArray(a) } // null = clé absente (ancien fichier)
             )
         }
     } catch (e: Exception) { logw("$NAME illisible", e); null }
 
-    private fun toBytes(bookName: String, d: Data): ByteArray = JSONObject()
-        .put("app", "JD Audiobook Reader").put("version", 1).put("book", bookName)
+    internal fun encode(bookName: String, d: Data): ByteArray = JSONObject()
+        .put("app", "JD Audiobook Reader").put("version", 2).put("book", bookName)
         .put("index", d.index).put("file", d.file).put("pos", d.pos)
         .put("speed", d.speed.toDouble()).put("finished", d.finished).put("updated", d.updated)
+        .also { o -> d.bookmarks?.let { o.put("bookmarks", BookmarkCodec.toArray(it)) } }
         .toString(2).toByteArray(Charsets.UTF_8)
 
     /** Identifiant SAF du dossier du livre : mémorisé au scan, sinon déduit du premier fichier audio. */
@@ -97,7 +99,7 @@ object ProgressFile {
 
     private fun writeLocked(ctx: Context, root: String, dir: String, bookName: String, d: Data): Boolean {
         val tree = Uri.parse(root)
-        val bytes = toBytes(bookName, d)
+        val bytes = encode(bookName, d)
         val res = ctx.contentResolver
         for (attempt in 0..1) {
             try {

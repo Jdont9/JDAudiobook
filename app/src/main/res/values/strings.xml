@@ -122,4 +122,6 @@
     <string name="eq_custom">Custom (10 bands)</string>
     <string name="eq_reset">Reset</string>
     <string name="eq_custom_hint">Drag the bars (−12 to +12 dB), double-tap a bar to reset it. The preamp adjusts itself. This curve is shared by every book that uses it.</string>
+    <string name="bookmark_note_title">Bookmark note</string>
+    <string name="bookmark_note_hint">Note (optional)</string>
 </resources>

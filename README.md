@@ -4,7 +4,7 @@
 
 A simple, fast audiobook player for Android that plays your files (MP3, M4B…) straight from a folder on your phone. No account, no ads, no tracking.
 
-Written in Kotlin with Jetpack Compose and Media3. Version **1.4.1**. The app is available in **English and French** (it follows your phone's language).
+Written in Kotlin with Jetpack Compose and Media3. Version **1.4.2**. The app is available in **English and French** (it follows your phone's language).
 
 > 🤖 **Built by an AI.** The code, documentation and scripts in this repository were written by an artificial intelligence (Claude, by Anthropic) from the requests and feedback of the project's owner, who directed the development and uses the app. Like any software it may contain bugs; it is provided as is, without warranty.
 
@@ -22,8 +22,8 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.4.1**. The app is
 
 **Player**
 - Seek back/forward by **10, 15, 30, 45 or 60 s** (menu → Skip duration; also used by the notification and Android Auto), previous/next file, jump to any file of the book.
-- **Bookmarks** per book (bookmark icon in the player): add the current position, jump back to one, delete it.
-- Speed from ×0.75 to ×3, sleep timer (10 to 90 min, with a 15 s volume fade-out, or **end of the current file**), silence skipping, volume boost from +3 to +12 dB (remembered per book), and a **parametric equalizer** with 11 presets (speech, dialogue, old recordings, night listening, headphone corrections…) or your own 10-band curve, remembered per book.
+- **Bookmarks** per book (bookmark icon in the player): add the current position with an optional note, jump back to one, edit its note, delete it.
+- Speed from ×0.75 to ×3, sleep timer (10 to 90 min, with a 15 s volume fade-out, or **end of the current file**; shake the phone to restart a running timer), silence skipping, volume boost from +3 to +12 dB (remembered per book), and a **parametric equalizer** with 11 presets (speech, dialogue, old recordings, night listening, headphone corrections…) or your own 10-band curve, remembered per book.
 - Chapters for `m4b`/`m4a` files and for `mp3` files that carry ID3 chapters (`CHAP` frames): previous/next jump chapter by chapter, and the chapter list is in the menu under the player (the file row with the arrow), next to the file list. Bogus chapter lists (a single chapter, or chapters less than a second apart) are ignored.
 - The app **opens on the player of the last book you listened to** (paused at your saved position); the back button goes to the library.
 - **Mini player** at the bottom of the library whenever a book is loaded: cover, title, back (skip duration), play/pause, close. Tapping it reopens the player without reloading anything.
@@ -37,7 +37,7 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.4.1**. The app is
 
 ## Install
 
-1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.4.1.apk` on your phone.
+1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.4.2.apk` on your phone.
 2. Open the file. Android will ask you to allow installs from that source (your browser or file manager): accept.
 3. Launch the app, open the menu (**gear icon**, top right) → **Choose the books folder**. Grant access, including write access (needed for progress and covers).
 
@@ -77,7 +77,7 @@ One folder = one book. The folder name is used as the title and as the basis for
 
 | File | Purpose |
 |---|---|
-| `position.jd.json` | The book's progress (file, position, speed, finished or not, date); human-readable and hand-editable. Written on pause, on file change, every 60 s while playing and when leaving the player. If it is newer than the local save, it is applied when the book is opened and on rescan. |
+| `position.jd.json` | The book's progress (file, position, speed, finished or not, bookmarks with their notes, date); human-readable and hand-editable. Written on pause, on file change, every 60 s while playing and when leaving the player. If it is newer than the local save, it is applied when the book is opened and on rescan. |
 | `cover.jpg` | Downloaded cover. |
 
 Smart AudioBook Player's `position.sabp.dat` files are never modified.
@@ -86,7 +86,7 @@ Smart AudioBook Player's `position.sabp.dat` files are never modified.
 
 - Nothing is sent to the author; no account, no usage analytics, no ads.
 - The only network accesses are ones you trigger yourself: the cover search (the **book title**, i.e. the folder name, is sent to iTunes (Apple), Audible (Amazon), Audiolib (Hachette), Google Books and Open Library) and the update check (a request to `api.github.com`, like any web request it exposes your IP address to GitHub). Nothing runs in the background.
-- Permissions: background playback (foreground service), notifications, keeping the device awake while playing (the CPU only, and only while audio is playing), internet (cover search and update check only). File access goes through Android's folder picker and is limited to the folder you choose.
+- Permissions: background playback (foreground service), notifications, keeping the device awake while playing (the CPU only, and only while audio is playing), internet (cover search and update check only), vibration (short confirmation when you shake the phone to restart the sleep timer). File access goes through Android's folder picker and is limited to the folder you choose.
 - Other apps cannot browse your library or control playback: the media service only accepts the app itself, the system (lock screen, Bluetooth), Android Auto, Google Assistant, Android Automotive and Wear OS. The widget's commands carry a secret token that never leaves the app.
 - Android backup: if Android's backup is on for your phone, your **progress, speeds, bookmarks and listening statistics** are included in your Google backup (never the audio, the covers or the library). To opt out, turn off backup in Android's settings.
 
@@ -124,6 +124,7 @@ User-facing text lives in Android string resources: `app/src/main/res/values/str
 | `Util.kt` | Shared helpers: logging, safe playback speed, bounded reads, a screen-refresh tick that pauses in the background |
 | `CoverProvider.kt` | Serves covers by URI to the notification, Android Auto and the widget |
 | `Boost.kt`, `Widget.kt`, `FilePicker.kt`, `Icons.kt`, `Theme.kt` | Volume boost, widget, pickers, icons, theme |
+| `Shake.kt` | Shake detection for the sleep timer (accelerometer, only while a timer runs) |
 | `Eq.kt`, `EqDialog.kt` | Equalizer: biquad filters in the audio output chain, Equalizer APO preset parser, preset list and picker |
 
 Note: source-code comments are mostly in French.

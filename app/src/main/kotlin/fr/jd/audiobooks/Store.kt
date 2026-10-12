@@ -13,7 +13,32 @@ import java.util.*
 // aligné sur le format utilisé par Smart AudioBook Player pour pouvoir croiser ses données.
 data class Book(val path: String, val name: String, val uris: List<String>, val names: List<String>, val cover: String? = null, val dir: String? = null)
 data class Saved(val index: Int, val pos: Long, val speed: Float, val updated: Long = 0L)
-data class Bookmark(val file: String, val pos: Long, val created: Long)
+data class Bookmark(val file: String, val pos: Long, val created: Long, val note: String = "")
+
+/**
+ * Signets <-> JSON (champs : f fichier, p position, t création, n note facultative). Sert aux préférences ET au fichier
+ * position.jd.json du dossier du livre, qu'on peut modifier à la main : chaque entrée est lue séparément (une entrée
+ * illisible est ignorée, pas toute la liste), valeurs bornées.
+ */
+object BookmarkCodec {
+    const val MAX_NOTE = 200
+    const val MAX_COUNT = 1000
+
+    private fun one(o: JSONObject): Bookmark? = try {
+        Bookmark(o.getString("f"), o.getLong("p").coerceAtLeast(0L), o.getLong("t").coerceAtLeast(0L), o.optString("n", "").take(MAX_NOTE))
+    } catch (e: Exception) { null }
+
+    fun fromArray(a: JSONArray): List<Bookmark> = (0 until minOf(a.length(), MAX_COUNT)).mapNotNull { i -> a.optJSONObject(i)?.let { one(it) } }
+
+    fun toArray(l: List<Bookmark>): JSONArray {
+        val a = JSONArray()
+        l.forEach { b -> a.put(JSONObject().put("f", b.file).put("p", b.pos).put("t", b.created).also { if (b.note.isNotEmpty()) it.put("n", b.note) }) }
+        return a
+    }
+
+    fun decode(json: String?): List<Bookmark> = try { fromArray(JSONArray(json ?: "[]")) } catch (e: Exception) { emptyList() }
+    fun encode(l: List<Bookmark>): String = toArray(l).toString()
+}
 data class Stat(val book: String, val day: String, val wall: Long, val content: Long)
 /** Minuscules sans accents : pour la recherche dans la bibliothèque. */
 fun fold(s: String): String = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
@@ -82,6 +107,9 @@ class Store(private val ctx: Context) {
         if (cur != null && d.updated <= cur.updated) return false
         save(path, idx, d.pos, d.speed, d.updated)
         setFinished(path, d.finished)
+        // Signets : le fichier plus récent l'emporte en bloc (comme la position). Absent du fichier (écrit par une version
+        // plus ancienne) : on garde les nôtres, qui y seront écrits à la prochaine sauvegarde.
+        d.bookmarks?.let { if (it != bookmarks(path)) putBookmarks(path, it) }
         return true
     }
     /** L'ordre des fichiers d'un livre a changé (tri naturel, fichier ajouté/supprimé) : les index enregistrés
@@ -142,16 +170,12 @@ class Store(private val ctx: Context) {
     fun setLastBook(path: String) { if (lastBook() != path) pos.edit().putString("last_book", path).apply() }
 
     // Signets (par livre, repérés par nom de fichier pour survivre à un changement d'ordre)
-    fun bookmarks(path: String): List<Bookmark> = try {
-        val a = JSONArray(p.getString("bm_$path", null) ?: "[]")
-        (0 until a.length()).map { i -> a.getJSONObject(i).let { Bookmark(it.getString("f"), it.getLong("p"), it.getLong("t")) } }
-    } catch (e: Exception) { emptyList() }
+    fun bookmarks(path: String): List<Bookmark> = BookmarkCodec.decode(p.getString("bm_$path", null))
     private fun putBookmarks(path: String, l: List<Bookmark>) {
-        val a = JSONArray()
-        l.forEach { a.put(JSONObject().put("f", it.file).put("p", it.pos).put("t", it.created)) }
-        p.edit().putString("bm_$path", a.toString()).apply()
+        p.edit().putString("bm_$path", BookmarkCodec.encode(l)).apply()
     }
     fun addBookmark(path: String, b: Bookmark) = putBookmarks(path, bookmarks(path) + b)
+    fun replaceBookmark(path: String, old: Bookmark, new: Bookmark) = putBookmarks(path, bookmarks(path).map { if (it == old) new else it })
     fun removeBookmark(path: String, b: Bookmark) = putBookmarks(path, bookmarks(path).filter { it != b })
 
     // Pochettes introuvables : on ne relance pas la recherche pour ces livres pendant 7 jours.

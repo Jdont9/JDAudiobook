@@ -1,5 +1,6 @@
 package fr.jd.audiobooks
 
+import android.content.Context
 import android.net.Uri
 import android.os.*
 import androidx.media3.common.*
@@ -40,7 +41,7 @@ class PlaybackService : MediaLibraryService() {
             store.flushTime()
             ProgressFile.writeAsync(
                 this, store.root, ex.getString("dir"), ex.getString("book") ?: "",
-                ProgressFile.Data(i, item.mediaMetadata.title?.toString(), pos, pl.playbackParameters.speed, store.finished(path), System.currentTimeMillis())
+                ProgressFile.Data(i, item.mediaMetadata.title?.toString(), pos, pl.playbackParameters.speed, store.finished(path), System.currentTimeMillis(), store.bookmarks(path))
             )
         }
     }
@@ -57,7 +58,7 @@ class PlaybackService : MediaLibraryService() {
         store.save(path, 0, 0L, speed)
         ProgressFile.writeAsync(
             this, store.root, ex.getString("dir"), ex.getString("book") ?: "",
-            ProgressFile.Data(0, pl.getMediaItemAt(0).mediaMetadata.title?.toString(), 0L, speed, true, System.currentTimeMillis())
+            ProgressFile.Data(0, pl.getMediaItemAt(0).mediaMetadata.title?.toString(), 0L, speed, true, System.currentTimeMillis(), store.bookmarks(path))
         )
     }
 
@@ -77,6 +78,8 @@ class PlaybackService : MediaLibraryService() {
         /** since : heure (ms) de la dernière écoute du livre qu'on vient de charger, 0 = pas de recul automatique. */
         fun markFreshStart(since: Long = 0L) { pausedAt = since; armedAt = SystemClock.elapsedRealtime() }
         private var self: PlaybackService? = null
+        /** Contexte du service en cours (null s'il est arrêté) : pour la minuterie de sommeil, qui n'a pas de contexte à elle. */
+        fun context(): Context? = self
         /** Sauvegarde immédiate (position + fichier du dossier), p. ex. après « Marquer comme lu ». */
         fun saveNow() { self?.persist(true) }
         const val ACTION_PLAY_PAUSE = "fr.jd.audiobooks.PLAY_PAUSE"
@@ -375,7 +378,10 @@ class PlaybackService : MediaLibraryService() {
     }
 }
 
-/** Minuterie de sommeil : durée fixe (avec fondu sonore sur les 15 dernières secondes) ou « fin du fichier en cours ». */
+/**
+ * Minuterie de sommeil : durée fixe (avec fondu sonore sur les 15 dernières secondes) ou « fin du fichier en cours ».
+ * Tant qu'une minuterie à durée fixe tourne (fondu compris), secouer le téléphone la relance pour la même durée.
+ */
 object Sleep {
     private const val FADE_MS = 15_000L
     private const val FADE_STEPS = 30
@@ -385,6 +391,8 @@ object Sleep {
     var endAt = 0L
     var untilFileEnd = false
     var fading = false
+    var minutes = 0 // dernière durée choisie : celle que la secousse relance
+    private var shake: ShakeWatcher? = null
 
     fun set(min: Int) {
         cancel()
@@ -392,6 +400,23 @@ object Sleep {
         val total = min * 60_000L
         endAt = SystemClock.elapsedRealtime() + total
         r = Runnable { startFade() }.also { h.postDelayed(it, (total - FADE_MS).coerceAtLeast(0)) }
+        minutes = min
+        startShake()
+    }
+
+    private fun startShake() {
+        if (shake != null) return
+        val ctx = PlaybackService.context() ?: return
+        val w = ShakeWatcher(ctx) { onShake() }
+        if (w.start()) shake = w
+    }
+
+    private fun stopShake() { shake?.stop(); shake = null }
+
+    private fun onShake() {
+        if (endAt == 0L || minutes <= 0) return
+        set(minutes) // annule le fondu éventuel (volume rétabli) et repart pour la même durée
+        PlaybackService.context()?.let { buzz(it) }
     }
 
     /** Pause à la fin du fichier en cours (ExoPlayer s'arrête tout seul à la fin de l'élément). */
@@ -411,6 +436,7 @@ object Sleep {
                 if (i >= FADE_STEPS) {
                     p.pause(); p.volume = 1f
                     fading = false; endAt = 0; f = null
+                    stopShake()
                 } else {
                     p.volume = 1f - i / FADE_STEPS.toFloat()
                     h.postDelayed(this, FADE_MS / FADE_STEPS)
@@ -425,6 +451,7 @@ object Sleep {
         r?.let { h.removeCallbacks(it) }
         f?.let { h.removeCallbacks(it) }
         r = null; f = null
+        stopShake()
         if (fading) PlaybackService.player?.volume = 1f
         fading = false; endAt = 0
         if (untilFileEnd) { untilFileEnd = false; PlaybackService.player?.pauseAtEndOfMediaItems = false }

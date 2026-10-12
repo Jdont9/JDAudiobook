@@ -2,6 +2,13 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.4.2
+**Nouveauté**
+- Minuterie de sommeil : secouer le téléphone pendant qu'elle tourne (fondu compris) la relance pour la même durée. Une courte vibration le confirme. Le capteur de mouvement n'est écouté que pendant qu'une minuterie à durée fixe tourne.
+- Signets : une note facultative à l'ajout, et un bouton ✎ pour la modifier ensuite. La note remplace le nom du fichier comme ligne principale du signet dans la liste.
+- Nouvelle permission : vibration (permission normale, rien à accepter).
+- Les signets (avec leurs notes) sont maintenant enregistrés dans le `position.jd.json` du livre, à côté de la position, de la vitesse et de l'état « terminé ». Ils suivent le dossier quand tu le copies ou le synchronises vers un autre téléphone. Le fichier le plus récent l'emporte en bloc, comme pour la position. Les signets que tu as déjà seront écrits dans le fichier à la prochaine sauvegarde du livre.
+
 ## 1.4.1
 **Nouveauté**
 - Android Auto et notification : seuls les boutons −10 s et +10 s sont conservés (les boutons −30 s et +30 s sont retirés).
