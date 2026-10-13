@@ -4,7 +4,7 @@
 
 A simple, fast audiobook player for Android that plays your files (MP3, M4B…) straight from a folder on your phone. No account, no ads, no tracking.
 
-Written in Kotlin with Jetpack Compose and Media3. Version **1.5.0**. The app is available in **English and French** (it follows your phone's language).
+Written in Kotlin with Jetpack Compose and Media3. Version **1.5.2**. The app is available in **English and French** (it follows your phone's language).
 
 > 🤖 **Built by an AI.** The code, documentation and scripts in this repository were written by an artificial intelligence (Claude, by Anthropic) from the requests and feedback of the project's owner, who directed the development and uses the app. Like any software it may contain bugs; it is provided as is, without warranty.
 
@@ -25,7 +25,7 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.5.0**. The app is
 - **Bookmarks** per book (bookmark icon in the player): add the current position with an optional note, jump back to one, edit its note, delete it.
 - Speed from ×0.75 to ×3, sleep timer (10 to 90 min, with a 15 s volume fade-out, or **end of the current chapter / file**; shake the phone to restart a running timer; when it stopped playback, the next resume goes back a few extra minutes — Settings → Rewind after the sleep timer), silence skipping, volume boost from +3 to +12 dB (remembered per book), and a **parametric equalizer** with 11 presets (speech, dialogue, old recordings, night listening, headphone corrections…) or your own 10-band curve, remembered per book.
 - Chapters for `m4b`/`m4a` files and for `mp3` files that carry ID3 chapters (`CHAP` frames): previous/next jump chapter by chapter, and the chapter list is in the menu under the player (the file row with the arrow), next to the file list. Bogus chapter lists (a single chapter, or chapters less than a second apart) are ignored.
-- The app **opens on the player of the last book you listened to** (paused at your saved position); the back button goes to the library.
+- The app **opens on the player of the last book you listened to** (paused at your saved position), or on the library if that book is finished; the back button goes to the library.
 - **Mini player** at the bottom of the library whenever a book is loaded: cover, title, back (skip duration), play/pause, close. Tapping it reopens the player without reloading anything.
 - **Back** (system button, gesture, or the in-app button) returns to the library: playback keeps going and the app stays open. The ✕ on the mini player stops playback.
 - **Bookmarks export**: a Share button in the bookmarks list sends them as Markdown text (notes, messages…).
@@ -46,7 +46,7 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.5.0**. The app is
 
 ## Install
 
-1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.5.0.apk` on your phone.
+1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.5.2.apk` on your phone.
 2. Open the file. Android will ask you to allow installs from that source (your browser or file manager): accept.
 3. Launch the app, open the menu (**gear icon**, top right) → **Choose the books folder**. Grant access, including write access (needed for progress and covers).
 

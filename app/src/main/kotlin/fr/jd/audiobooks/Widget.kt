@@ -104,7 +104,7 @@ class JdWidget : AppWidgetProvider() {
                 }
             } else {
                 // Rien de chargé : on propose de reprendre le dernier livre (le bouton lecture le fait).
-                val last = Store(ctx).lastBook()
+                val last = Store(ctx).resumableBook()
                 path = last
                 title = last?.substringAfterLast('/') ?: ctx.getString(R.string.app_name)
                 sub = ctx.getString(if (last != null) R.string.widget_tap_resume else R.string.widget_open_hint)

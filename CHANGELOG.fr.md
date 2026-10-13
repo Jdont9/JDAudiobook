@@ -2,6 +2,14 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.5.2
+**Corrections**
+- Un livre terminé n'est plus relancé depuis son début par le ▶ du widget, la touche lecture d'un casque Bluetooth ou d'une voiture, ni l'entrée « Reprendre » d'Android Auto : rien ne démarre (le widget invite alors à ouvrir l'appli). Même règle qu'au lancement.
+
+## 1.5.1
+**Corrections**
+- Au lancement, si le dernier livre écouté est terminé, l'appli ouvre maintenant la bibliothèque au lieu de rouvrir ce livre à son début. Un livre en cours de lecture (lancé depuis Android Auto, par exemple) reste affiché.
+
 ## 1.5.0
 **Sécurité**
 - Réseau : HTTPS uniquement (le trafic en clair est désormais interdit par une configuration de sécurité réseau). Les requêtes vers des adresses locales ou privées sont refusées, y compris après une redirection, les redirections sont limitées à 5 et chaque téléchargement a une taille maximale. Un lien de pochette collé ne peut plus servir à sonder votre réseau domestique.

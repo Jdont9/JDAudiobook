@@ -68,10 +68,15 @@ fun fmt(ms: Long): String { val s = ms / 1000; return "%d:%02d:%02d".format(s / 
 
 /**
  * Livre à rouvrir au lancement : celui déjà chargé dans le lecteur (lecture en cours depuis Android Auto, par ex.),
- * sinon le dernier livre écouté. null = bibliothèque.
+ * sinon le dernier livre écouté. null = bibliothèque : aussi quand ce livre est terminé (rien à reprendre), sauf s'il
+ * est en train de jouer.
  */
-private fun startupBook(store: Store): String? =
-    PlaybackService.player?.currentMediaItem?.mediaMetadata?.extras?.getString("path") ?: store.lastBook()
+private fun startupBook(store: Store): String? {
+    val p = PlaybackService.player
+    val loaded = p?.currentMediaItem?.mediaMetadata?.extras?.getString("path")
+    if (loaded != null && p?.playWhenReady == true) return loaded
+    return (loaded ?: store.lastBook())?.takeIf { !store.finished(it) } // pas resumableBook() : un livre chargé reste affiché
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(b: Bundle?) {

@@ -174,7 +174,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun resumeLastBook() {
-        val path = store.lastBook() ?: return
+        val path = store.resumableBook() ?: return
         scope.launch {
             try {
                 val bk = withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } } ?: return@launch
@@ -223,7 +223,7 @@ class PlaybackService : MediaLibraryService() {
 
     /** Élément lisible « Reprendre : <dernier livre> » (tête de la bibliothèque Android Auto, et racine « récents »). */
     private suspend fun resumeItem(): MediaItem? {
-        val path = store.lastBook() ?: return null
+        val path = store.resumableBook() ?: return null
         val bk = withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } } ?: return null
         val art = Covers.artUri(this, bk)
         return MediaItem.Builder().setMediaId(RESUME_ID).setMediaMetadata(
@@ -233,7 +233,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun lastBookOrNull(): Book? {
-        val path = store.lastBook() ?: return null
+        val path = store.resumableBook() ?: return null
         return withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } }
     }
 

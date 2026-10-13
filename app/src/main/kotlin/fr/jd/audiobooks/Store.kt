@@ -227,6 +227,8 @@ class Store(private val ctx: Context) {
 
     // Dernier livre écouté : le widget s'en sert pour reprendre quand le lecteur est vide.
     fun lastBook(): String? = pos.getString("last_book", null)
+    /** Dernier livre à reprendre : null si aucun, ou s'il est terminé (rien à reprendre : on ne le relance pas depuis son début). */
+    fun resumableBook(): String? = lastBook()?.takeIf { !finished(it) }
     fun setLastBook(path: String) { if (lastBook() != path) pos.edit().putString("last_book", path).apply() }
 
     // Signets (par livre, repérés par nom de fichier pour survivre à un changement d'ordre)

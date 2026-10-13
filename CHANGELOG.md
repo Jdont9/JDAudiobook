@@ -2,6 +2,14 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.5.2
+**Fixes**
+- A finished book is no longer resumed from its start by the widget's ▶, a Bluetooth headset or car play button, or the Android Auto "Resume" entry: nothing happens (the widget then invites you to open the app). Same rule as at launch.
+
+## 1.5.1
+**Fixes**
+- At launch, if the last book you listened to is finished, the app now opens on the library instead of reopening that book at its start. A book that is currently playing (e.g. started from Android Auto) is still shown.
+
 ## 1.5.0
 **Security**
 - Network: HTTPS only (cleartext is now forbidden by a network security configuration). Requests to local or private addresses are refused, including after a redirect, redirects are limited to 5 and every download has a size limit. A pasted cover link can no longer be used to probe your home network.
