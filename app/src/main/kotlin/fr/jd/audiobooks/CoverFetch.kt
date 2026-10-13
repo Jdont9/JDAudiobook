@@ -16,8 +16,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLEncoder
 import java.text.Normalizer
 
@@ -30,28 +28,8 @@ object CoverFetch {
 
     private const val MAX_BYTES = 10_000_000 // plafond de téléchargement (un lien collé ne doit pas pouvoir remplir la mémoire)
 
-    private fun readCapped(c: HttpURLConnection): ByteArray? {
-        if (c.contentLengthLong > MAX_BYTES) return null
-        val out = ByteArrayOutputStream()
-        val buf = ByteArray(16 * 1024)
-        c.inputStream.use { ins ->
-            while (true) {
-                val n = ins.read(buf)
-                if (n < 0) break
-                out.write(buf, 0, n)
-                if (out.size() > MAX_BYTES) return null
-            }
-        }
-        return out.toByteArray()
-    }
-
-    private fun http(url: String): ByteArray? = try {
-        val c = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 8000; readTimeout = 8000; instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "JDAudiobook/1.0 (Android)")
-        }
-        try { if (c.responseCode in 200..299) readCapped(c) else null } finally { c.disconnect() }
-    } catch (e: Exception) { logw("requête HTTP échouée", e); null }
+    /** GET sécurisé (HTTPS public uniquement, redirections revérifiées, taille plafonnée) : voir SafeHttp. */
+    private fun http(url: String): ByteArray? = SafeHttp.request(url, MAX_BYTES)?.body
 
     private fun json(url: String): JSONObject? = try { http(url)?.let { JSONObject(String(it, Charsets.UTF_8)) } } catch (e: Exception) { null }
 
@@ -96,18 +74,13 @@ object CoverFetch {
     private fun JSONObject.str(k: String): String = if (isNull(k)) "" else optString(k)
 
     private fun postJson(url: String, body: String): JSONObject? = try {
-        val c = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"; doOutput = true; connectTimeout = 10000; readTimeout = 10000
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Accept", "application/json, text/plain, */*")
-            setRequestProperty("Origin", "https://www.audiolib.fr")
-            setRequestProperty("Referer", "https://www.audiolib.fr/")
-            setRequestProperty("User-Agent", "JDAudiobook/1.0 (Android)")
-        }
-        try {
-            c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            if (c.responseCode in 200..299) JSONObject(String(c.inputStream.use { it.readBytes() }, Charsets.UTF_8)) else null
-        } finally { c.disconnect() }
+        SafeHttp.request(
+            url, 2_000_000, body.toByteArray(Charsets.UTF_8), timeoutMs = 10_000,
+            headers = mapOf(
+                "Content-Type" to "application/json", "Accept" to "application/json, text/plain, */*",
+                "Origin" to "https://www.audiolib.fr", "Referer" to "https://www.audiolib.fr/"
+            )
+        )?.let { JSONObject(String(it.body, Charsets.UTF_8)) }
     } catch (e: Exception) { null }
 
     /** Audiolib : même recherche que le site (Elasticsearch de Hachette), version allégée. Non officielle : peut changer. */
@@ -130,7 +103,7 @@ object CoverFetch {
             val d = JSONObject(src.optJSONArray("decoupled_render")?.optString(0) ?: return@mapNotNull null)
             val title = listOf(d.str("titre_de_couverture"), d.str("libelle_de_tomaison"), d.str("serie_label")).filter { it.isNotEmpty() }.distinct().joinToString(" ")
             val uri = d.optJSONObject("image_de_couverture")?.str("uri").orEmpty().substringBefore('?')
-            val hd = d.str("image_de_couverture_hd").takeIf { it.startsWith("http") }
+            val hd = d.str("image_de_couverture_hd").takeIf { it.startsWith("http") }?.replace("http://", "https://")
             val small = if (uri.isNotEmpty()) "https://media.hachette.fr/fit-in/500x500/$uri" else null
             val main = hd ?: small ?: return@mapNotNull null
             Cand(title, main, if (hd != null) small else null)
@@ -138,7 +111,8 @@ object CoverFetch {
     } catch (e: Exception) { emptyList() }
 
     /** Image déclarée par une page web (balise og:image), ou null. */
-    private fun metaImage(html: String): String? {
+    private fun metaImage(htmlFull: String): String? {
+        val html = htmlFull.take(512 * 1024) // la balise est dans l'en-tête : inutile (et lent) de passer la regex sur 10 Mo
         val tag = Regex("<meta[^>]+(?:property|name)=[\"']og:image[\"'][^>]*>").find(html)?.value ?: return null
         val u = Regex("content=[\"']([^\"']+)[\"']").find(tag)?.groupValues?.get(1)?.replace("&amp;", "&") ?: return null
         return if (u.startsWith("//")) "https:$u" else u
@@ -171,7 +145,7 @@ object CoverFetch {
     private fun toJpeg(raw: ByteArray): ByteArray? {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(raw, 0, raw.size, o)
-        if (minOf(o.outWidth, o.outHeight) < 100) return null
+        if (minOf(o.outWidth, o.outHeight) < 100 || o.outWidth.toLong() * o.outHeight > 100_000_000L) return null
         var s = 1
         while (maxOf(o.outWidth, o.outHeight) / s > 1024) s *= 2
         val bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = s }) ?: return null
@@ -180,7 +154,8 @@ object CoverFetch {
 
     /** Pochette depuis un lien collé à la main : image directe, ou page web (Audiolib, Audible, Babelio…) qui déclare son image (og:image). */
     fun fromUrl(raw: String): Found? {
-        val url = raw.trim().takeIf { it.startsWith("http") } ?: return null
+        val url = raw.trim().takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?.replaceFirst("http://", "https://") ?: return null // HTTPS uniquement
         val bytes = http(url) ?: return null
         toJpeg(bytes)?.let { return Found(it, "link") }
         val img = metaImage(String(bytes, Charsets.UTF_8)) ?: return null
@@ -188,7 +163,7 @@ object CoverFetch {
     }
 
     /** Cherche la pochette d'un livre ; null si rien de suffisamment proche n'est trouvé. */
-    fun find(bk: Book): Found? {
+    fun find(bk: Book, audiolib: Boolean = false): Found? {
         val title = cleanTitle(bk.name)
         val parent = bk.path.substringBeforeLast('/', "").substringAfterLast('/')
         val queries = listOfNotNull(title, if (parent.isNotEmpty()) cleanTitle("$parent $title") else null)
@@ -199,7 +174,7 @@ object CoverFetch {
             "Audible (US)" to { q -> audible("api.audible.com", q) },
             "Google Books" to ::google,
             "Open Library" to ::openLibrary
-        )
+        ).filter { audiolib || it.first != "Audiolib" } // API non officielle : seulement si l'utilisateur la coche
         for (q in queries) for ((label, search) in sources) {
             val best = search(q).map { it to score(title, it.title) }.filter { it.second >= 0.5 }.maxByOrNull { it.second }?.first ?: continue
             (fetchImage(best.url) ?: best.alt?.let { fetchImage(it) })?.let { return Found(it, label) }
@@ -251,6 +226,7 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
     var link by remember { mutableStateOf("") }
     var linkErr by remember { mutableStateOf<String?>(null) }
     var linkBusy by remember { mutableStateOf(false) }
+    var useAudiolib by remember { mutableStateOf(store.flag("src_audiolib")) }
 
     // Analyse : quels livres n'ont ni image dans leur dossier, ni pochette intégrée, ni pochette déjà téléchargée ?
     LaunchedEffect(Unit) {
@@ -281,6 +257,12 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
                             },
                             style = MaterialTheme.typography.bodyMedium
                         )
+                        if (!running && !done) Row(
+                            Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            Checkbox(useAudiolib, { useAudiolib = it; store.setFlag("src_audiolib", it) })
+                            Text(ctx.getString(R.string.covers_audiolib_opt), style = MaterialTheme.typography.bodySmall)
+                        }
                         if (running) {
                             Spacer(Modifier.height(8.dp))
                             LinearProgressIndicator(progress = { index.toFloat() / m.size }, modifier = Modifier.fillMaxWidth())
@@ -311,7 +293,7 @@ fun MissingCoversDialog(books: List<Book>, store: Store, onCover: (String, Strin
                             log += Entry(bk, ctx.getString(R.string.not_found_recent, bk.name), false)
                             return@forEachIndexed
                         }
-                        val r = withContext(Dispatchers.IO) { CoverFetch.find(bk) }
+                        val r = withContext(Dispatchers.IO) { CoverFetch.find(bk, useAudiolib) }
                         if (r == null) { store.markCoverTried(bk.path); log += Entry(bk, ctx.getString(R.string.not_found_entry, bk.name), false) }
                         else {
                             store.clearCoverTried(bk.path)

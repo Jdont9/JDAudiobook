@@ -1,9 +1,11 @@
 package fr.jd.audiobooks
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
 private val Light = lightColorScheme(
     primary = Color(0xFFBA1A1A), onPrimary = Color.White,
@@ -28,6 +30,15 @@ private val Dark = darkColorScheme(
     surfaceContainerHigh = Color(0xFF322827), surfaceContainerHighest = Color(0xFF3D3231)
 )
 
+/** [dynamic] : couleurs du fond d'écran (Material You, Android 12+) au lieu du rouge de l'appli. Réglage « Couleurs du système ». */
 @Composable
-fun JdTheme(content: @Composable () -> Unit) =
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, content = content)
+fun JdTheme(dynamic: Boolean = false, content: @Composable () -> Unit) {
+    val dark = isSystemInDarkTheme()
+    val ctx = LocalContext.current
+    val scheme = when {
+        dynamic && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        dark -> Dark
+        else -> Light
+    }
+    MaterialTheme(colorScheme = scheme, content = content)
+}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Aucun trafic en clair, même vers un hôte inattendu (une redirection ou un lien collé ne peut pas rétrograder en http).
+     Seules les autorités de certification du système sont acceptées. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

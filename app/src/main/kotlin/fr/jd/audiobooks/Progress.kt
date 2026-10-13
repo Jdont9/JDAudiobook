@@ -77,7 +77,7 @@ object ProgressFile {
             if (uri == null) null
             else {
                 synchronized(lock) { uriCache[dir] = uri }
-                ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let { parse(it) }
+                ctx.contentResolver.openInputStream(uri)?.use { it.readCapped(MAX_PROGRESS_BYTES) }?.let { parse(it) }
             }
         } catch (e: Exception) { null }
     }

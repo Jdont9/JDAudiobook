@@ -128,12 +128,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write       # signs the provenance attestation
+      attestations: write   # stores it on GitHub
     steps:
       - name: Download the signed APK
         uses: actions/download-artifact@v6
         with:
           name: audiobooks-release
           path: dist
+
+      # Proves the APK on the release page was built by this workflow from this commit
+      # (check with: gh attestation verify JDAudiobook-X.Y.Z.apk --repo Jdont9/JDAudiobook).
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*.apk
 
       - name: Publish the GitHub Release
         uses: softprops/action-gh-release@v2

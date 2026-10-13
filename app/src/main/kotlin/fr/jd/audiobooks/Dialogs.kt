@@ -59,6 +59,7 @@ private fun NoteDialog(initial: String, onSave: (String) -> Unit, onDismiss: () 
 /** Signets d'un livre : ajouter la position actuelle (avec une note facultative), revenir à un signet, modifier sa note, en supprimer. */
 @Composable
 fun BookmarksDialog(bk: Book, store: Store, p: Player, onDismiss: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var list by remember { mutableStateOf(store.bookmarks(bk.path)) }
     val sorted = list.sortedWith(compareBy<Bookmark>({ bk.names.indexOf(it.file) }, { it.pos }))
     val df = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
@@ -79,10 +80,19 @@ fun BookmarksDialog(bk: Book, store: Store, p: Player, onDismiss: () -> Unit) {
         title = { Text(stringResource(R.string.bookmarks)) },
         text = {
             Column {
-                TextButton({
-                    val name = bk.names.getOrNull(p.currentMediaItemIndex)
-                    if (name != null) { draftIsNew = true; draft = Bookmark(name, p.currentPosition, System.currentTimeMillis()) }
-                }) { Text(stringResource(R.string.add_bookmark)) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton({
+                        val name = bk.names.getOrNull(p.currentMediaItemIndex)
+                        if (name != null) { draftIsNew = true; draft = Bookmark(name, p.currentPosition, System.currentTimeMillis()) }
+                    }) { Text(stringResource(R.string.add_bookmark)) }
+                    // Partage la liste en texte (Markdown : titre puis une ligne par signet) vers l'appli choisie : notes, messagerie…
+                    if (sorted.isNotEmpty()) TextButton({
+                        val text = BookmarkExport.markdown(bk.name, sorted) { fmt(it) }
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(android.content.Intent.EXTRA_TEXT, text).putExtra(android.content.Intent.EXTRA_SUBJECT, bk.name)
+                        try { ctx.startActivity(android.content.Intent.createChooser(send, null)) } catch (e: Exception) { logw("partage des signets", e) }
+                    }) { Text(stringResource(R.string.share_bookmarks)) }
+                }
                 if (sorted.isEmpty()) Text(stringResource(R.string.no_bookmarks), style = MaterialTheme.typography.bodySmall)
                 else LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     items(sorted) { b ->

@@ -40,6 +40,10 @@ fun parseSaved(raw: String?): Saved? {
 /** « 20240315 » -> « 20240301 » : sert à regrouper les vieilles statistiques par mois. */
 fun monthStart(day: String): String = if (day.length == 8) day.substring(0, 6) + "01" else day
 
+/** Plafonds de lecture des fichiers qui vivent dans un dossier de livres (partagé, synchronisé, modifiable à la main). */
+internal const val MAX_PROGRESS_BYTES = 1_000_000   // position.jd.json / position.sabp.dat
+internal const val MAX_COVER_BYTES = 12_000_000     // image de pochette (dossier ou copie locale)
+
 /** Lit tout le flux, mais renvoie null si la taille dépasse [max] octets. */
 fun InputStream.readCapped(max: Int): ByteArray? {
     val out = ByteArrayOutputStream()

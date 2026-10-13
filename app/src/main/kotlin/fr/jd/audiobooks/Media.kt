@@ -358,8 +358,28 @@ object Covers {
 
     const val ART_AUTHORITY = "fr.jd.audiobooks.art"
 
-    private fun artFile(ctx: Context, path: String): File =
-        File(File(ctx.filesDir, "art").also { it.mkdirs() }, Integer.toHexString(path.hashCode()) + ".jpg")
+    // Le fournisseur de pochettes est joignable par les autres applis : le nom de fichier doit donc être impossible à
+    // deviner (SHA-256 du chemin du livre salé par le jeton secret de l'appli, 128 bits), pas un hashCode() de 32 bits
+    // qu'on pourrait énumérer pour savoir quels livres tu as. Le jeton n'est jamais sauvegardé ni partagé.
+    private var artSalt: String? = null
+    private var artCleaned = false
+
+    internal fun artName(salt: String, path: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest("$salt|$path".toByteArray(Charsets.UTF_8))
+            .take(16).joinToString("") { "%02x".format(it) } + ".jpg"
+
+    /** Copie réduite de la pochette (même fichier que celui servi par CoverProvider), qu'elle existe ou non : pour le widget. */
+    fun artFileFor(ctx: Context, path: String): File = artFile(ctx, path)
+
+    private fun artFile(ctx: Context, path: String): File {
+        val dir = File(ctx.filesDir, "art").also { it.mkdirs() }
+        val salt = artSalt ?: Store(ctx).serviceToken().also { artSalt = it }
+        if (!artCleaned) { // anciens noms (hashCode sur 8 caractères) : supprimés une fois, ils sont recréés sous le nouveau nom
+            artCleaned = true
+            dir.listFiles()?.forEach { if (!Regex("[0-9a-f]{32}\\.jpg").matches(it.name)) it.delete() }
+        }
+        return File(dir, artName(salt, path))
+    }
 
     /** URI (servie par CoverProvider) d'une petite copie JPEG de la pochette ; null si le livre n'en a pas.
      *  Sert d'artwork aux MediaItem à la place de l'image elle-même, recopiée avant dans chaque fichier. */
@@ -392,10 +412,10 @@ object Covers {
 
     private fun load(ctx: Context, bk: Book): Bitmap? {
         val local = localFile(ctx, bk.path)
-        fun readLocal(): ByteArray? = local.takeIf { it.exists() }?.let { try { it.readBytes() } catch (e: Exception) { null } }
+        fun readLocal(): ByteArray? = local.takeIf { it.exists() && it.length() <= MAX_COVER_BYTES }?.let { try { it.readBytes() } catch (e: Exception) { null } }
         var data: ByteArray? = if (pinFile(ctx, bk.path).exists()) readLocal() else null
         if (data == null) data = try {
-            bk.cover?.let { c -> ctx.contentResolver.openInputStream(Uri.parse(c))?.use { it.readBytes() } }
+            bk.cover?.let { c -> ctx.contentResolver.openInputStream(Uri.parse(c))?.use { it.readCapped(MAX_COVER_BYTES) } }
                 ?: MediaMetadataRetriever().run {
                     try { setDataSource(ctx, Uri.parse(bk.uris[0])); embeddedPicture } finally { release() }
                 }
@@ -404,6 +424,8 @@ object Covers {
         if (data == null) return null
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, o)
+        // Image illisible ou absurde (bombe de décompression) : ignorée au lieu de saturer la mémoire.
+        if (o.outWidth <= 0 || o.outHeight <= 0 || o.outWidth.toLong() * o.outHeight > 100_000_000L) return null
         var s = 1
         while (maxOf(o.outWidth, o.outHeight) / s > 512) s *= 2
         return BitmapFactory.decodeByteArray(data, 0, data.size, BitmapFactory.Options().apply { inSampleSize = s })

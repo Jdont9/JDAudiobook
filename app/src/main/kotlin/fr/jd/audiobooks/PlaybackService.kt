@@ -3,6 +3,9 @@ package fr.jd.audiobooks
 import android.content.Context
 import android.net.Uri
 import android.os.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.media3.common.*
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.*
@@ -15,6 +18,8 @@ import kotlinx.coroutines.*
 import kotlin.math.abs
 
 private const val ROOT_ID = "root"
+private const val RECENT_ID = "recent"   // racine « récents » demandée par certains clients (reprise du dernier livre)
+private const val RESUME_ID = "resume"   // élément lisible « Reprendre : <livre> »
 
 class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
@@ -22,6 +27,13 @@ class PlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val store by lazy { Store(this) }
     private var playTicks = 0
+    private var ticker: Runnable? = null
+    private var ticking = false
+
+    private fun startTicking() {
+        val t = ticker ?: return
+        if (!ticking) { ticking = true; h.postDelayed(t, 1000) }
+    }
 
     // La progression est sauvegardée ICI, dans le service : elle ne dépend plus de l'écran lecteur (qui peut être
     // fermé/détruit alors que la lecture continue, ou ne jamais avoir existé en Android Auto).
@@ -60,7 +72,37 @@ class PlaybackService : MediaLibraryService() {
             this, store.root, ex.getString("dir"), ex.getString("book") ?: "",
             ProgressFile.Data(0, pl.getMediaItemAt(0).mediaMetadata.title?.toString(), 0L, speed, true, System.currentTimeMillis(), store.bookmarks(path))
         )
+        if (store.flag("auto_next")) playNextInSeries(path)
     }
+
+    /** Option « Enchaîner le tome suivant » : à la fin d'un livre rangé dans un dossier de série, lance le livre suivant du
+     *  même dossier qui n'est pas encore lu (ordre de la bibliothèque). Sans suivant, la lecture s'arrête comme avant. */
+    private fun playNextInSeries(path: String) {
+        val dir = path.substringBeforeLast('/', "")
+        if (dir.isEmpty()) return
+        scope.launch {
+            try {
+                val lib = withContext(Dispatchers.IO) { store.library() }
+                val i = lib.indexOfFirst { it.path == path }
+                if (i < 0) return@launch
+                val next = lib.drop(i + 1).firstOrNull { it.path.substringBeforeLast('/', "") == dir && !store.finished(it.path) } ?: return@launch
+                val l = loadBook(next)
+                val pl = player ?: return@launch
+                markFreshStart(store.load(next.path)?.updated ?: 0L)
+                pl.setMediaItems(l.items, l.index, l.pos)
+                pl.setPlaybackSpeed(safeSpeed(l.speed))
+                pl.prepare()
+                pl.play()
+                bookVersion++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) { logw("tome suivant", e) }
+        }
+    }
+
+    // Mise à jour du widget regroupée : plusieurs événements du lecteur d'affilée ne font qu'un seul rendu.
+    private val widgetUpdate = Runnable { JdWidget.updateAll(this) }
+    private fun scheduleWidget() { h.removeCallbacks(widgetUpdate); h.postDelayed(widgetUpdate, 250) }
 
     // Après un déplacement (curseur, chapitre) : on attend que ça se stabilise avant d'écrire.
     private val seekPersist = Runnable { persist(true) }
@@ -85,10 +127,14 @@ class PlaybackService : MediaLibraryService() {
         const val ACTION_PLAY_PAUSE = "fr.jd.audiobooks.PLAY_PAUSE"
         const val ACTION_NEXT = "fr.jd.audiobooks.NEXT"
         const val ACTION_PREV = "fr.jd.audiobooks.PREV"
+        const val ACTION_BACK10 = "fr.jd.audiobooks.BACK10"
+        const val ACTION_FWD10 = "fr.jd.audiobooks.FWD10"
+        /** Incrémenté quand le service change de livre tout seul (tome suivant) : l'écran lecteur suit. */
+        var bookVersion by mutableStateOf(0)
         /** Jeton joint par le widget : le service est exporté (Android Auto, notification…), donc ces commandes
          *  ne sont acceptées que si elles portent le jeton secret de l'appli. */
         const val EXTRA_TOKEN = "fr.jd.audiobooks.TOKEN"
-        private val ACTIONS = setOf(ACTION_PLAY_PAUSE, ACTION_NEXT, ACTION_PREV)
+        private val ACTIONS = setOf(ACTION_PLAY_PAUSE, ACTION_NEXT, ACTION_PREV, ACTION_BACK10, ACTION_FWD10)
         /** Clients médias autorisés en plus des composants système de confiance (isTrusted) et de l'appli elle-même. */
         private val ALLOWED_CLIENTS = setOf(
             "com.google.android.projection.gearhead",   // Android Auto
@@ -105,8 +151,12 @@ class PlaybackService : MediaLibraryService() {
     private fun isAllowedClient(c: MediaSession.ControllerInfo): Boolean =
         c.isTrusted || c.packageName == packageName || c.packageName in ALLOWED_CLIENTS
 
+    /** Comparaison à temps constant du jeton reçu avec le jeton secret (évite de le deviner octet par octet). */
+    private fun tokenOk(given: String?): Boolean =
+        given != null && java.security.MessageDigest.isEqual(given.toByteArray(Charsets.UTF_8), store.serviceToken().toByteArray(Charsets.UTF_8))
+
     override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action in ACTIONS && intent?.getStringExtra(EXTRA_TOKEN) != store.serviceToken()) {
+        if (intent?.action in ACTIONS && !tokenOk(intent?.getStringExtra(EXTRA_TOKEN))) {
             logw("Commande ignorée (jeton absent ou faux) : ${intent?.action}")
             return super.onStartCommand(intent, flags, startId)
         }
@@ -117,6 +167,8 @@ class PlaybackService : MediaLibraryService() {
             }
             ACTION_NEXT -> player?.seekToNextMediaItem()
             ACTION_PREV -> player?.seekToPreviousMediaItem()
+            ACTION_BACK10 -> player?.skipBy(-10_000L)
+            ACTION_FWD10 -> player?.skipBy(10_000L)
         }
         return super.onStartCommand(intent, flags, startId)
     }
@@ -169,6 +221,22 @@ class PlaybackService : MediaLibraryService() {
                 .apply { art?.let { setArtworkUri(it) } }.build()
         ).build()
 
+    /** Élément lisible « Reprendre : <dernier livre> » (tête de la bibliothèque Android Auto, et racine « récents »). */
+    private suspend fun resumeItem(): MediaItem? {
+        val path = store.lastBook() ?: return null
+        val bk = withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } } ?: return null
+        val art = Covers.artUri(this, bk)
+        return MediaItem.Builder().setMediaId(RESUME_ID).setMediaMetadata(
+            MediaMetadata.Builder().setTitle(getString(R.string.resume_book, bk.name)).setIsBrowsable(false).setIsPlayable(true)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK).apply { art?.let { setArtworkUri(it) } }.build()
+        ).build()
+    }
+
+    private suspend fun lastBookOrNull(): Book? {
+        val path = store.lastBook() ?: return null
+        return withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } }
+    }
+
     private class Loaded(val items: List<MediaItem>, val index: Int, val pos: Long, val speed: Float)
 
     /** Playlist complète d'un livre + position de reprise. requestedIdx : fichier choisi explicitement (Android Auto). */
@@ -218,7 +286,7 @@ class PlaybackService : MediaLibraryService() {
         override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, params: LibraryParams?) =
             Futures.immediateFuture(
                 LibraryResult.ofItem(
-                    MediaItem.Builder().setMediaId(ROOT_ID)
+                    MediaItem.Builder().setMediaId(if (params?.isRecent == true) RECENT_ID else ROOT_ID)
                         .setMediaMetadata(MediaMetadata.Builder().setTitle(getString(R.string.app_name)).setIsBrowsable(true).setIsPlayable(false).build())
                         .build(), params
                 )
@@ -230,7 +298,8 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = futureOf {
             val items = withContext(Dispatchers.IO) {
                 when {
-                    parentId == ROOT_ID -> store.library().map { bookItem(it) }
+                    parentId == ROOT_ID -> listOfNotNull(resumeItem()) + store.library().map { bookItem(it) }
+                    parentId == RECENT_ID -> listOfNotNull(resumeItem())
                     parentId.startsWith("book:") -> {
                         val path = parentId.removePrefix("book:")
                         val bk = store.library().firstOrNull { it.path == path }
@@ -247,7 +316,9 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onGetItem(session: MediaLibrarySession, browser: MediaSession.ControllerInfo, mediaId: String): ListenableFuture<LibraryResult<MediaItem>> = futureOf {
             val item = withContext(Dispatchers.IO) {
-                if (mediaId.startsWith("track:")) {
+                if (mediaId == RESUME_ID) {
+                    resumeItem()
+                } else if (mediaId.startsWith("track:")) {
                     val rest = mediaId.removePrefix("track:")
                     val path = rest.substringBeforeLast('|'); val idx = rest.substringAfterLast('|').toInt()
                     val bk = store.library().firstOrNull { it.path == path }
@@ -260,26 +331,69 @@ class PlaybackService : MediaLibraryService() {
         }
 
         // Résout un élément choisi dans Android Auto (un chapitre) en la playlist complète du livre,
-        // pour garder précédent/suivant et la reprise à la bonne position.
+        // pour garder précédent/suivant et la reprise à la bonne position. Gère aussi « Reprendre » et les demandes
+        // vocales de l'Assistant (« lis <titre> », sans identifiant mais avec un texte de recherche).
         override fun onSetMediaItems(
             mediaSession: MediaSession, controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long
         ): ListenableFuture<MediaItemsWithStartPosition> {
-            val requested = mediaItems.firstOrNull()?.mediaId ?: ""
+            val first = mediaItems.firstOrNull()
+            val requested = first?.mediaId ?: ""
             val isTrack = requested.startsWith("track:")
-            if (!isTrack && !requested.startsWith("book:"))
+            val isBook = requested.startsWith("book:")
+            val isResume = requested == RESUME_ID
+            val voice = first?.requestMetadata?.searchQuery
+            val isVoice = voice != null && !isTrack && !isBook && !isResume
+            if (!isTrack && !isBook && !isResume && !isVoice)
                 return super.onSetMediaItems(mediaSession, controller, mediaItems, startIndex, startPositionMs)
             return futureOf {
                 val path = if (isTrack) requested.removePrefix("track:").substringBeforeLast('|') else requested.removePrefix("book:")
                 val idx = if (isTrack) requested.substringAfterLast('|').toInt() else null
-                val bk = withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } }
+                val bk = when {
+                    isResume -> lastBookOrNull()
+                    isVoice -> withContext(Dispatchers.IO) {
+                        // Demande vide (« lis mon livre audio ») : on reprend le dernier livre ; sinon le meilleur résultat.
+                        if (voice.isNullOrBlank()) null else SearchBooks.find(store.library(), voice).firstOrNull()
+                    } ?: lastBookOrNull()
+                    else -> withContext(Dispatchers.IO) { store.library().firstOrNull { it.path == path } }
+                }
                 if (bk == null) MediaItemsWithStartPosition(ImmutableList.of(), 0, 0)
                 else {
                     val l = loadBook(bk, idx)
                     markFreshStart(store.load(bk.path)?.updated ?: 0L) // recul selon le temps écoulé depuis la dernière écoute
+                    player?.setPlaybackSpeed(safeSpeed(l.speed)) // la vitesse propre au livre (n'était pas appliquée depuis Android Auto)
                     MediaItemsWithStartPosition(ImmutableList.copyOf(l.items), l.index, l.pos)
                 }
             }
+        }
+
+        // Touche « lecture » d'un casque Bluetooth ou d'une voiture alors que l'appli est fermée (ou après un redémarrage) :
+        // le système demande quoi reprendre. On répond : le dernier livre, à sa position enregistrée.
+        override fun onPlaybackResumption(mediaSession: MediaSession, controller: MediaSession.ControllerInfo): ListenableFuture<MediaItemsWithStartPosition> = futureOf {
+            val bk = lastBookOrNull() ?: throw IllegalStateException("aucun livre à reprendre")
+            val l = loadBook(bk)
+            markFreshStart(store.load(bk.path)?.updated ?: 0L)
+            player?.setPlaybackSpeed(safeSpeed(l.speed))
+            MediaItemsWithStartPosition(ImmutableList.copyOf(l.items), l.index, l.pos)
+        }
+
+        // Recherche (barre de recherche d'Android Auto, Assistant) : livres dont le titre ou le dossier contient les mots.
+        override fun onSearch(
+            session: MediaLibrarySession, browser: MediaSession.ControllerInfo, query: String, params: LibraryParams?
+        ): ListenableFuture<LibraryResult<Void>> = futureOf {
+            val n = withContext(Dispatchers.IO) { SearchBooks.find(store.library(), query).size }
+            session.notifySearchResultChanged(browser, query, n, params)
+            LibraryResult.ofVoid()
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession, browser: MediaSession.ControllerInfo, query: String,
+            page: Int, pageSize: Int, params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = futureOf {
+            val all = withContext(Dispatchers.IO) { SearchBooks.find(store.library(), query) }
+            val from = (page.toLong() * pageSize).coerceAtMost(all.size.toLong()).toInt()
+            val to = (from.toLong() + pageSize).coerceAtMost(all.size.toLong()).toInt()
+            LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to).map { bookItem(it) }), params)
         }
     }
 
@@ -296,6 +410,7 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         Skip.load(store)
         Eq.setCustom(store.eqCustom())
+        Dynamics.enabled = store.flag("dyn")
         val p = ExoPlayer.Builder(this, EqRenderersFactory(this, Eq.newProcessor()))
             .setAudioAttributes(AudioAttributes.Builder().setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).setUsage(C.USAGE_MEDIA).build(), true)
             .setHandleAudioBecomingNoisy(true)
@@ -304,8 +419,17 @@ class PlaybackService : MediaLibraryService() {
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setSeekBackIncrementMs(30_000).setSeekForwardIncrementMs(30_000).build()
         p.addListener(object : Player.Listener {
-            override fun onAudioSessionIdChanged(sessionId: Int) { Boost.attach(sessionId) }
-            override fun onEvents(pl: Player, e: Player.Events) { JdWidget.updateAll(this@PlaybackService) }
+            override fun onAudioSessionIdChanged(sessionId: Int) { Boost.attach(sessionId); Dynamics.attach(sessionId) }
+            // Le widget n'est redessiné que pour les événements qui changent son aspect (et regroupés : voir scheduleWidget).
+            override fun onEvents(pl: Player, e: Player.Events) {
+                if (e.containsAny(
+                        Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION,
+                        Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_TIMELINE_CHANGED, Player.EVENT_POSITION_DISCONTINUITY,
+                        Player.EVENT_PLAYBACK_STATE_CHANGED
+                    )) scheduleWidget()
+            }
+            // La boucle d'une seconde ne tourne que pendant la lecture (avant : en permanence, même en pause).
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (isPlaying) startTicking() }
             override fun onPlaybackStateChanged(state: Int) { if (state == Player.STATE_ENDED) bookEnded() }
             // Retour arrière automatique à la reprise, proportionnel à la durée de pause
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -324,35 +448,45 @@ class PlaybackService : MediaLibraryService() {
             }
             override fun onPlayWhenReadyChanged(pwr: Boolean, reason: Int) {
                 // Minuterie « fin du fichier » arrivée au bout, ou lecture reprise pendant le fondu : minuterie terminée.
+                if (!pwr && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM && Sleep.untilFileEnd) Sleep.rewindPending = true
                 if ((!pwr && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) || (pwr && Sleep.fading)) Sleep.cancel()
                 val now = System.currentTimeMillis()
                 if (!pwr) { pausedAt = now; persist(true) }
-                else if (pausedAt > 0) {
-                    val s = ((now - pausedAt) / 1000).coerceAtLeast(0)
-                    val back = when { s < 5 -> 0L; s < 300 -> 3_000L; s < 3600 -> 10_000L; s < 86_400 -> 20_000L; else -> 30_000L }
-                    if (back > 0) p.seekTo((p.currentPosition - back).coerceAtLeast(0))
-                    pausedAt = 0L // un seul recul par pause
+                else {
+                    if (pausedAt > 0) {
+                        val s = ((now - pausedAt) / 1000).coerceAtLeast(0)
+                        var back = when { s < 5 -> 0L; s < 300 -> 3_000L; s < 3600 -> 10_000L; s < 86_400 -> 20_000L; else -> 30_000L }
+                        // La pause venait de la minuterie de sommeil et on reprend après un vrai sommeil (> 2 min) : on recule
+                        // en plus de quelques minutes, pour retrouver le passage où l'on s'est endormi.
+                        if (Sleep.rewindPending && s >= 120) back = maxOf(back, store.sleepRewindMin() * 60_000L)
+                        if (back > 0) p.seekTo((p.currentPosition - back).coerceAtLeast(0))
+                        pausedAt = 0L // un seul recul par pause
+                    }
+                    Sleep.rewindPending = false
                 }
             }
         })
-        h.postDelayed(object : Runnable {
+        // Boucle d'une seconde : temps écouté, sauvegardes périodiques, minuterie « fin du chapitre » et widget. Elle ne
+        // tourne que pendant la lecture : démarrée par onIsPlayingChanged, elle s'arrête d'elle-même à la pause.
+        ticker = object : Runnable {
             override fun run() {
-                if (p.isPlaying) {
-                    p.mediaMetadata.extras?.getString("path")?.let {
-                        store.addTime(it, 1000, (1000 * p.playbackParameters.speed).toLong())
-                    }
-                    playTicks++
-                    // Position : toutes les 5 s ; statistiques : toutes les 20 s ; fichier du dossier (souvent synchronisé
-                    // par un service cloud, donc ménagé) : toutes les 60 s, en plus de la pause et des changements de fichier.
-                    if (playTicks % 60 == 0) persist(true)
-                    else {
-                        if (playTicks % 20 == 0) store.flushTime()
-                        if (playTicks % 5 == 0) persist(false)
-                    }
+                if (!p.isPlaying) { ticking = false; return }
+                p.mediaMetadata.extras?.getString("path")?.let {
+                    store.addTime(it, 1000, (1000 * p.playbackParameters.speed).toLong())
                 }
+                playTicks++
+                // Position : toutes les 5 s ; statistiques : toutes les 20 s ; fichier du dossier (souvent synchronisé
+                // par un service cloud, donc ménagé) : toutes les 60 s, en plus de la pause et des changements de fichier.
+                if (playTicks % 60 == 0) persist(true)
+                else {
+                    if (playTicks % 20 == 0) store.flushTime()
+                    if (playTicks % 5 == 0) persist(false)
+                }
+                if (playTicks % 15 == 0) scheduleWidget() // barre de progression du widget
                 h.postDelayed(this, 1000)
             }
-        }, 1000)
+        }
+        if (p.isPlaying) startTicking()
         player = p
         self = this
         session = MediaLibrarySession.Builder(this, SkipPlayer(p), libraryCallback).setCustomLayout(customLayout()).build()
@@ -369,6 +503,7 @@ class PlaybackService : MediaLibraryService() {
         persist(true)
         Sleep.cancel()
         Boost.release()
+        Dynamics.release()
         Eq.release()
         self = null
         h.removeCallbacksAndMessages(null)
@@ -379,7 +514,8 @@ class PlaybackService : MediaLibraryService() {
 }
 
 /**
- * Minuterie de sommeil : durée fixe (avec fondu sonore sur les 15 dernières secondes) ou « fin du fichier en cours ».
+ * Minuterie de sommeil : durée fixe (avec fondu sonore sur les 15 dernières secondes), « fin du chapitre » ou « fin du fichier en cours ».
+ * Quand elle arrête la lecture, la reprise recule en plus de quelques minutes (réglage « Recul après la minuterie »).
  * Tant qu'une minuterie à durée fixe tourne (fondu compris), secouer le téléphone la relance pour la même durée.
  */
 object Sleep {
@@ -390,6 +526,12 @@ object Sleep {
     private var f: Runnable? = null
     var endAt = 0L
     var untilFileEnd = false
+    var untilChapter = false
+    /** Vrai quand la dernière pause vient de la minuterie : la prochaine reprise reculera davantage (voir le service). */
+    @Volatile var rewindPending = false
+    private var chIdx = 0
+    private var chEnd = 0L
+    private var poll: Runnable? = null
     var fading = false
     var minutes = 0 // dernière durée choisie : celle que la secousse relance
     private var shake: ShakeWatcher? = null
@@ -426,6 +568,28 @@ object Sleep {
         PlaybackService.player?.pauseAtEndOfMediaItems = true
     }
 
+    /** Pause à la fin du chapitre en cours : fichier [fileIdx], fin à [endMs] (vérifiée 4 fois par seconde). */
+    fun chapterEnd(fileIdx: Int, endMs: Long) {
+        cancel()
+        untilChapter = true; chIdx = fileIdx; chEnd = endMs
+        val step = object : Runnable {
+            override fun run() {
+                val p = PlaybackService.player
+                if (p == null || !untilChapter) { cancel(); return }
+                val idx = p.currentMediaItemIndex
+                if (idx > chIdx || (idx == chIdx && p.currentPosition >= chEnd - 150)) {
+                    rewindPending = true
+                    p.pause()
+                    cancel()
+                    return
+                }
+                h.postDelayed(this, 250)
+            }
+        }
+        poll = step
+        h.postDelayed(step, 250)
+    }
+
     private fun startFade() {
         val p = PlaybackService.player ?: run { endAt = 0; return }
         fading = true
@@ -434,6 +598,7 @@ object Sleep {
             override fun run() {
                 i++
                 if (i >= FADE_STEPS) {
+                    rewindPending = true
                     p.pause(); p.volume = 1f
                     fading = false; endAt = 0; f = null
                     stopShake()
@@ -451,6 +616,7 @@ object Sleep {
         r?.let { h.removeCallbacks(it) }
         f?.let { h.removeCallbacks(it) }
         r = null; f = null
+        poll?.let { h.removeCallbacks(it) }; poll = null; untilChapter = false
         stopShake()
         if (fading) PlaybackService.player?.volume = 1f
         fading = false; endAt = 0

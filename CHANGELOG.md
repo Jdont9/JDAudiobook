@@ -2,6 +2,35 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.5.0
+**Security**
+- Network: HTTPS only (cleartext is now forbidden by a network security configuration). Requests to local or private addresses are refused, including after a redirect, redirects are limited to 5 and every download has a size limit. A pasted cover link can no longer be used to probe your home network.
+- Files from your book folders are no longer trusted blindly: `position.jd.json`, `position.sabp.dat` and cover images are read with a size limit, and images with absurd dimensions are ignored. A huge or crafted file could previously crash the app each time the library was opened.
+- Covers served to other apps (notification, Android Auto, widget) now have unguessable names (128 bits) instead of a 32-bit hash that could be enumerated, which also removes accidental collisions between two books.
+- Widget and service commands: the secret token is compared in constant time.
+- Audiolib (unofficial API) is now **opt-in**: a checkbox in the "Find missing covers" dialog, off by default.
+- Android cloud backup is only used when it is end-to-end encrypted.
+- About shows the SHA-256 fingerprint of the certificate that signed the installed APK, to compare with the release page. Releases carry a build provenance attestation.
+
+**New**
+- **New home-screen widget**, much nicer: rounded cover, book title, current file, time, progress bar and five buttons (previous, −10 s, play/pause, +10 s, next) in a large size; a compact size for one row. It switches between the two when resized, follows the system colors and dark mode (Material You on Android 12+) and can resume the last book when nothing is loaded.
+- Bluetooth headset / car **play button** now resumes your last book even when the app is closed.
+- Android Auto: a **Resume** entry at the top, **search** of your books (also by voice with the Assistant), and the book's own speed is now applied when it is started from Android Auto.
+- Sleep timer: **end of the current chapter**, and an automatic **extra rewind** (0 to 15 min, default 5) when you resume after the timer stopped playback.
+- Option **Chain the next volume**: at the end of a book in a series folder, the next unfinished book of that folder starts.
+- When the folder holds a more recent position from another device that points somewhere clearly different, the app **asks which one to keep** instead of overwriting yours silently.
+- **Encrypted backup** (Settings): export / import positions, bookmarks, settings and statistics in one password-protected file (AES-256-GCM, PBKDF2). Only known settings of the right type and range are restored.
+- Bookmarks: a **Share** button exports them as Markdown text.
+- Statistics: current and longest **streak**, a 10-week **heat map** and **CSV export** (cells are protected against spreadsheet formula injection).
+- **Voice compression** (Android 9+) for noisy places and night listening.
+- **System colors** (Material You) as an option for the app itself (Android 12+).
+- Tablets and unfolded foldables: the content stays in a centred column of at most 840 dp.
+- New **Settings** entry in the menu.
+
+**Improvements**
+- Less work in the background: the one-second timer only runs while playing, and the widget is redrawn only when something visible changes (grouped updates).
+- Fix: the book's saved speed was ignored when a book was started from Android Auto.
+
 ## 1.4.2
 **New**
 - Sleep timer: shake the phone while it is running (fade-out included) to restart it for the same duration. A short vibration confirms it. The motion sensor is only listened to while a timed sleep timer is running.

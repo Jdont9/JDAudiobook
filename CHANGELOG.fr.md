@@ -2,6 +2,35 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.5.0
+**Sécurité**
+- Réseau : HTTPS uniquement (le trafic en clair est désormais interdit par une configuration de sécurité réseau). Les requêtes vers des adresses locales ou privées sont refusées, y compris après une redirection, les redirections sont limitées à 5 et chaque téléchargement a une taille maximale. Un lien de pochette collé ne peut plus servir à sonder votre réseau domestique.
+- Les fichiers de vos dossiers de livres ne sont plus crus sur parole : `position.jd.json`, `position.sabp.dat` et les images de pochette sont lus avec une taille maximale, et les images aux dimensions absurdes sont ignorées. Un fichier énorme ou forgé pouvait auparavant faire planter l'appli à chaque ouverture de la bibliothèque.
+- Les pochettes servies aux autres applis (notification, Android Auto, widget) ont maintenant des noms impossibles à deviner (128 bits) au lieu d'un hachage de 32 bits énumérable, ce qui supprime aussi les collisions accidentelles entre deux livres.
+- Commandes du widget et du service : le jeton secret est comparé à temps constant.
+- Audiolib (API non officielle) devient **optionnel** : case à cocher dans la fenêtre « Rechercher les pochettes manquantes », décochée par défaut.
+- La sauvegarde cloud d'Android n'est utilisée que si elle est chiffrée de bout en bout.
+- À propos affiche l'empreinte SHA-256 du certificat qui a signé l'APK installé, à comparer avec la page de la release. Les releases portent une attestation de provenance de compilation.
+
+**Nouveautés**
+- **Nouveau widget d'écran d'accueil**, bien plus soigné : pochette arrondie, titre du livre, fichier en cours, temps, barre de progression et cinq boutons (précédent, −10 s, lecture/pause, +10 s, suivant) en grand format ; un format compact pour une seule ligne. Il bascule de l'un à l'autre quand on le redimensionne, suit les couleurs du système et le mode sombre (Material You dès Android 12) et peut reprendre le dernier livre quand rien n'est chargé.
+- La touche **lecture** d'un casque Bluetooth ou d'une voiture reprend maintenant votre dernier livre même appli fermée.
+- Android Auto : une entrée **Reprendre** en tête, la **recherche** de vos livres (aussi à la voix avec l'Assistant), et la vitesse propre au livre est maintenant appliquée quand on le lance depuis Android Auto.
+- Minuterie de sommeil : **fin du chapitre en cours**, et **recul supplémentaire** automatique (0 à 15 min, 5 par défaut) à la reprise après que la minuterie a arrêté la lecture.
+- Option **Enchaîner le tome suivant** : à la fin d'un livre rangé dans un dossier de série, le livre suivant non terminé du même dossier démarre.
+- Quand le dossier contient une position plus récente venant d'un autre appareil et qui pointe clairement ailleurs, l'appli **demande laquelle garder** au lieu d'écraser la vôtre en silence.
+- **Sauvegarde chiffrée** (Réglages) : export / import des positions, signets, réglages et statistiques dans un seul fichier protégé par mot de passe (AES-256-GCM, PBKDF2). Seuls des réglages connus, du bon type et dans les bonnes bornes sont restaurés.
+- Signets : un bouton **Partager** les exporte en texte Markdown.
+- Statistiques : **série** de jours en cours et record, **calendrier de chaleur** sur 10 semaines et **export CSV** (cellules protégées contre l'injection de formules des tableurs).
+- **Compression de la voix** (Android 9+) pour les lieux bruyants et l'écoute de nuit.
+- **Couleurs du système** (Material You) en option pour l'appli elle-même (Android 12+).
+- Tablettes et pliables ouverts : le contenu reste dans une colonne centrée de 840 dp au plus.
+- Nouvelle entrée **Réglages** dans le menu.
+
+**Améliorations**
+- Moins de travail en arrière-plan : la boucle d'une seconde ne tourne que pendant la lecture, et le widget n'est redessiné que lorsque quelque chose de visible change (mises à jour regroupées).
+- Correction : la vitesse enregistrée d'un livre était ignorée quand on le lançait depuis Android Auto.
+
 ## 1.4.2
 **Nouveauté**
 - Minuterie de sommeil : secouer le téléphone pendant qu'elle tourne (fondu compris) la relance pour la même durée. Une courte vibration le confirme. Le capteur de mouvement n'est écouté que pendant qu'une minuterie à durée fixe tourne.

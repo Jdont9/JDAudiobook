@@ -40,6 +40,30 @@ class OpenTreeRW : ActivityResultContracts.OpenDocumentTree() {
         )
 }
 
+/** Question posée à l'ouverture d'un livre quand un autre appareil a une position plus récente et différente. */
+private class ConflictAsk(val bk: Book, val c: Store.Conflict, val answer: CompletableDeferred<Boolean>)
+
+@Composable
+private fun ConflictDialog(a: ConflictAsk) {
+    val df = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
+    fun where(i: Int, pos: Long) = "${a.bk.names.getOrElse(i) { "?" }} · ${fmt(pos)}"
+    AlertDialog(
+        onDismissRequest = { a.answer.complete(false) },
+        title = { Text(stringResource(R.string.conflict_title)) },
+        text = {
+            Text(
+                stringResource(
+                    R.string.conflict_body, a.bk.name,
+                    where(a.c.remoteIndex, a.c.remotePos), df.format(Date(a.c.remoteUpdated)),
+                    where(a.c.localIndex, a.c.localPos), df.format(Date(a.c.localUpdated))
+                )
+            )
+        },
+        confirmButton = { TextButton({ a.answer.complete(true) }) { Text(stringResource(R.string.conflict_take_remote)) } },
+        dismissButton = { TextButton({ a.answer.complete(false) }) { Text(stringResource(R.string.conflict_keep_local)) } }
+    )
+}
+
 fun fmt(ms: Long): String { val s = ms / 1000; return "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) }
 
 /**
@@ -59,7 +83,17 @@ class MainActivity : ComponentActivity() {
         Skip.load(store)
         Thread { store.cleanupLegacy(); store.compactStats() }.start() // anciens réglages égaliseur/signets ; vieilles stats regroupées par mois
         enableEdgeToEdge()
-        setContent { JdTheme { Surface(Modifier.fillMaxSize()) { App(store) } } }
+        val dynamic = store.flag("dynamic") && Build.VERSION.SDK_INT >= 31
+        setContent {
+            JdTheme(dynamic) {
+                Surface(Modifier.fillMaxSize()) {
+                    // Tablettes et pliables ouverts : le contenu reste dans une colonne lisible (840 dp au plus), centrée.
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                        Box(Modifier.widthIn(max = 840.dp).fillMaxSize()) { App(store) }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -89,6 +123,12 @@ fun App(store: Store) {
     var query by rememberSaveable { mutableStateOf("") }
     var sortRecent by rememberSaveable { mutableStateOf(store.flag("sort_recent")) }
     var importMsg by remember { mutableStateOf<String?>(null) }
+    var conflictAsk by remember { mutableStateOf<ConflictAsk?>(null) }
+    // Le service a enchaîné le tome suivant tout seul : l'écran lecteur suit le livre réellement chargé.
+    val bookVersion = PlaybackService.bookVersion
+    LaunchedEffect(bookVersion) {
+        if (bookVersion > 0) PlaybackService.player?.currentMediaItem?.mediaMetadata?.extras?.getString("path")?.let { if (it != curPath) curPath = it }
+    }
 
     suspend fun rescan() {
         scanProgress = ScanProgress(0, 0)
@@ -152,11 +192,21 @@ fun App(store: Store) {
                 val artJob = async(Dispatchers.IO) { Covers.artUri(ctx, bk) }
                 // Fichier de progression du dossier (position.jd.json) : s'il est plus récent que la sauvegarde locale
                 // (livre repris sur un autre appareil, par ex.), il est appliqué avant de lire la position.
-                val syncJob = async(Dispatchers.IO) {
-                    ProgressFile.read(ctx, store.root, bk)?.let { store.applyProgressFile(bk.path, bk.names, it) }
-                }
+                val syncJob = async(Dispatchers.IO) { ProgressFile.read(ctx, store.root, bk) }
                 val art = withTimeoutOrNull(2000) { artJob.await() }
-                withTimeoutOrNull(1500) { syncJob.await() }
+                val remote = withTimeoutOrNull(1500) { syncJob.await() }
+                if (remote != null) {
+                    // Un autre appareil a une position plus récente ET différente (autre fichier, > 1 min d'écart) : on demande
+                    // laquelle garder au lieu d'écraser la position d'ici en silence. Sinon, appliqué comme avant.
+                    val conflict = withContext(Dispatchers.IO) { store.progressConflict(bk.path, bk.names, remote) }
+                    var takeRemote = true
+                    if (conflict != null) {
+                        val ask = ConflictAsk(bk, conflict, CompletableDeferred())
+                        conflictAsk = ask
+                        takeRemote = try { ask.answer.await() } finally { conflictAsk = null }
+                    }
+                    withContext(Dispatchers.IO) { if (takeRemote) store.applyProgressFile(bk.path, bk.names, remote) else store.keepLocal(bk.path) }
+                }
                 // Lecture de la position seulement ici : l'écran lecteur n'écrit rien tant que le livre n'est pas chargé.
                 val s = store.load(bk.path)
                 PlaybackService.markFreshStart(s?.updated ?: 0L) // recul selon le temps écoulé depuis la dernière écoute de CE livre
@@ -230,4 +280,5 @@ fun App(store: Store) {
             onCoverFound = { path, uri -> if (uri != null) books = books.map { if (it.path == path) it.copy(cover = uri) else it } }
         )
     }
+    conflictAsk?.let { ConflictDialog(it) }
 }

@@ -11,14 +11,15 @@ import java.io.FileNotFoundException
 /**
  * Sert les pochettes (petits JPEG de filesDir/art) par URI : la notification, l'écran de verrouillage, Android Auto
  * et le widget les chargent via cette URI. Avant, l'image entière était recopiée dans chaque fichier de la playlist
- * (300 fichiers = 300 copies envoyées aux autres processus). Lecture seule, noms de fichiers strictement contrôlés.
+ * (300 fichiers = 300 copies envoyées aux autres processus). Lecture seule, noms de fichiers strictement contrôlés
+ * et impossibles à deviner (128 bits aléatoires, voir Covers.artName).
  */
 class CoverProvider : ContentProvider() {
     override fun onCreate() = true
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         val name = uri.lastPathSegment ?: throw FileNotFoundException()
-        if (mode != "r" || !Regex("[0-9a-f]{1,8}\\.jpg").matches(name)) throw FileNotFoundException()
+        if (mode != "r" || !Regex("[0-9a-f]{32}\\.jpg").matches(name)) throw FileNotFoundException()
 
         val baseDir = File(context!!.filesDir, "art").canonicalFile
         val requested = File(baseDir, name).canonicalFile

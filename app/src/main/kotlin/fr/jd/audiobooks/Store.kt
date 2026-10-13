@@ -1,6 +1,7 @@
 package fr.jd.audiobooks
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.Uri
 import android.provider.DocumentsContract
 import org.json.*
@@ -112,6 +113,26 @@ class Store(private val ctx: Context) {
         d.bookmarks?.let { if (it != bookmarks(path)) putBookmarks(path, it) }
         return true
     }
+    /** Fichier de progression du dossier plus récent que la sauvegarde locale ET qui pointe ailleurs de façon notable. */
+    data class Conflict(val remoteIndex: Int, val remotePos: Long, val remoteUpdated: Long, val localIndex: Int, val localPos: Long, val localUpdated: Long)
+
+    /**
+     * Le fichier du dossier (autre appareil) est plus récent que ce qu'on a ici et ne pointe pas au même endroit (autre fichier,
+     * ou plus de 60 s d'écart) : à demander à l'utilisateur plutôt qu'à appliquer en silence. null = pas de conflit
+     * (fichier plus ancien, ou à peu près au même endroit : on applique comme avant).
+     */
+    fun progressConflict(path: String, names: List<String>, d: ProgressFile.Data): Conflict? {
+        if (names.isEmpty()) return null
+        val cur = load(path) ?: return null
+        if (d.updated <= cur.updated) return null
+        val idx = d.file?.let { fn -> names.indexOf(fn) }?.takeIf { it >= 0 } ?: d.index.coerceIn(0, names.lastIndex)
+        val differs = idx != cur.index || kotlin.math.abs(d.pos - cur.pos) > 60_000
+        return if (differs) Conflict(idx, d.pos, d.updated, cur.index, cur.pos, cur.updated) else null
+    }
+
+    /** « Garder ici » après un conflit : la position locale redevient la plus récente (le fichier du dossier sera réécrit). */
+    fun keepLocal(path: String) { load(path)?.let { save(path, it.index, it.pos, it.speed) } }
+
     /** L'ordre des fichiers d'un livre a changé (tri naturel, fichier ajouté/supprimé) : les index enregistrés
      *  (position) sont retrouvés par nom de fichier pour continuer à pointer sur les bons fichiers. */
     fun remapIndices(path: String, oldNames: List<String>, newNames: List<String>) {
@@ -164,6 +185,45 @@ class Store(private val ctx: Context) {
     // Durée du saut avant/arrière (secondes)
     fun skipSeconds(): Int = p.getInt("skip_s", 30)
     fun setSkipSeconds(s: Int) = p.edit().putInt("skip_s", s).apply()
+
+    // Recul supplémentaire (minutes) à la reprise après la minuterie de sommeil (0 = aucun)
+    fun sleepRewindMin(): Int = p.getInt("sleep_rw", 5).coerceIn(0, 30)
+    fun setSleepRewindMin(m: Int) = p.edit().putInt("sleep_rw", m.coerceIn(0, 30)).apply()
+
+    // ---- Sauvegarde / restauration chiffrée (voir Backup.kt) : on ne lit et n'écrit que des clés connues, validées.
+    fun backupSnapshot(): Map<String, Map<String, Any?>> = mapOf("p" to p.all.toMap(), "pos" to pos.all.toMap(), "stats" to st.all.toMap())
+
+    /** Fusionne une sauvegarde déjà validée (Backup.parse) : réglages et « lu » repris tels quels, signets réunis, positions
+     *  seulement si plus récentes, statistiques au maximum de chaque compteur. Renvoie le nombre d'éléments appliqués. */
+    fun restore(r: Backup.Restored): Int {
+        var n = 0
+        val ep = p.edit(); val epos = pos.edit(); val es = st.edit()
+        for ((k, v) in r.p) {
+            when {
+                k.startsWith("bm_") && v is String ->
+                    ep.putString(k, BookmarkCodec.encode((BookmarkCodec.decode(p.getString(k, null)) + BookmarkCodec.decode(v)).distinct().take(BookmarkCodec.MAX_COUNT)))
+                v is String -> ep.putString(k, v)
+                v is Int -> ep.putInt(k, v)
+                v is Boolean -> ep.putBoolean(k, v)
+                else -> continue
+            }
+            n++
+        }
+        for ((k, v) in r.pos) {
+            if (v !is String) continue
+            if (k == "last_book") { if (!pos.contains(k)) { epos.putString(k, v); n++ }; continue }
+            val inc = parseSaved(v) ?: continue
+            val cur = parseSaved(pos.getString(k, null))
+            if (cur == null || inc.updated > cur.updated) { epos.putString(k, v); n++ }
+        }
+        for ((k, v) in r.stats) {
+            if (v !is String) continue
+            val a = Backup.pair(v); val b = Backup.pair(st.getString(k, null))
+            es.putString(k, "${maxOf(a[0], b[0])},${maxOf(a[1], b[1])}"); n++
+        }
+        ep.apply(); epos.apply(); es.apply()
+        return n
+    }
 
     // Dernier livre écouté : le widget s'en sert pour reprendre quand le lecteur est vide.
     fun lastBook(): String? = pos.getString("last_book", null)
@@ -383,7 +443,7 @@ class Store(private val ctx: Context) {
                 // lisible, celui de Smart Player est ignoré ; sinon on retombe sur la logique Smart ci-dessous.
                 var hasJd = false
                 files.firstOrNull { it.name == ProgressFile.NAME }?.let { jf ->
-                    val pj = try { resolver.openInputStream(Uri.parse(uriFor(jf.id)))?.use { it.readBytes() } } catch (e: Exception) { null }
+                    val pj = try { resolver.openInputStream(Uri.parse(uriFor(jf.id)))?.use { it.readCapped(MAX_PROGRESS_BYTES) } } catch (e: Exception) { null }
                         ?.let { ProgressFile.parse(it) }
                     if (pj != null) { hasJd = true; applyProgressFile(path, bk.names, pj) }
                 }
@@ -395,13 +455,13 @@ class Store(private val ctx: Context) {
                 var bytes: ByteArray? = null
                 if (!hasJd) {
                     if (listed != null) {
-                        bytes = try { resolver.openInputStream(Uri.parse(listed))?.use { it.readBytes() } } catch (e: Exception) { null }
+                        bytes = try { resolver.openInputStream(Uri.parse(listed))?.use { it.readCapped(MAX_PROGRESS_BYTES) } } catch (e: Exception) { null }
                     } else if (!sabpListedSeen && guessTries < 15) {
                         // Certains fournisseurs n'affichent pas ce fichier dans la liste : on tente l'URI directe, mais
                         // seulement sur les premiers livres (sinon c'est un appel qui échoue par livre, sur toute la bibliothèque).
                         guessTries++
                         bytes = try {
-                            resolver.openInputStream(DocumentsContract.buildDocumentUriUsingTree(treeUri, "$dirId/position.sabp.dat"))?.use { it.readBytes() }
+                            resolver.openInputStream(DocumentsContract.buildDocumentUriUsingTree(treeUri, "$dirId/position.sabp.dat"))?.use { it.readCapped(MAX_PROGRESS_BYTES) }
                         } catch (e: Exception) { null }
                     }
                 }

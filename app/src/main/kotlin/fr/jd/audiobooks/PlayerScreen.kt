@@ -248,14 +248,20 @@ fun PlayerScreen(bk: Book, store: Store, onCoverChanged: (String?) -> Unit, back
                     val sleepBtn: @Composable () -> Unit = {
                         Icon(JdIcons.Moon, contentDescription = stringResource(R.string.sleep_timer), Modifier.size(20.dp))
                         if (left > 0) Text(fmt(left), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
-                        else if (Sleep.untilFileEnd) Text(stringResource(R.string.sleep_file_short), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
+                        else if (Sleep.untilFileEnd || Sleep.untilChapter) Text(stringResource(R.string.sleep_file_short), Modifier.padding(start = 4.dp), maxLines = 1, style = MaterialTheme.typography.labelSmall)
                     }
-                    if (left > 0 || Sleep.untilFileEnd) FilledTonalButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
+                    if (left > 0 || Sleep.untilFileEnd || Sleep.untilChapter) FilledTonalButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
                     else OutlinedButton({ sleepMenu = true }, Modifier.fillMaxWidth(), contentPadding = btnPad) { sleepBtn() }
                     DropdownMenu(sleepMenu, { sleepMenu = false }) {
                         listOf(0, 10, 15, 30, 45, 60, 90).forEach { m ->
                             DropdownMenuItem({ Text(if (m == 0) stringResource(R.string.off) else stringResource(R.string.minutes_short, m)) }, { Sleep.set(m); sleepMenu = false })
                         }
+                        // « Fin du chapitre » : seulement si le fichier a des chapitres ; le dernier chapitre finit avec le fichier.
+                        if (chaps.size > 1) DropdownMenuItem({ Text(stringResource(R.string.sleep_end_of_chapter)) }, {
+                            val end = chaps.getOrNull(ci + 1)?.startMs
+                            if (end == null) Sleep.fileEnd() else Sleep.chapterEnd(p.currentMediaItemIndex, end)
+                            sleepMenu = false
+                        })
                         DropdownMenuItem({ Text(stringResource(R.string.sleep_end_of_file)) }, { Sleep.fileEnd(); sleepMenu = false })
                     }
                 }

@@ -2,8 +2,13 @@ package fr.jd.audiobooks
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -15,6 +20,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 /** Vérification de mise à jour : uniquement à la demande (bouton de la fenêtre « À propos »), jamais en automatique. */
 object Updater {
@@ -31,6 +37,20 @@ object Updater {
     fun currentVersion(ctx: Context): String = try {
         ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "?"
     } catch (e: Exception) { "?" }
+
+    /** Empreinte SHA-256 d'un certificat, en hexadécimal séparé par « : » (format de `apksigner verify --print-certs`). */
+    internal fun fingerprint(cert: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(cert).joinToString(":") { "%02X".format(it) }
+
+    /** Empreinte du certificat qui a signé l'APK installé : à comparer avec celle publiée sur la page de la release,
+     *  pour vérifier qu'un APK téléchargé n'a pas été modifié ou signé par quelqu'un d'autre. null si illisible. */
+    fun signingFingerprint(ctx: Context): String? = try {
+        val pm = ctx.packageManager
+        val sig = if (Build.VERSION.SDK_INT >= 28)
+            pm.getPackageInfo(ctx.packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo?.apkContentsSigners?.firstOrNull()
+        else @Suppress("DEPRECATION") pm.getPackageInfo(ctx.packageName, PackageManager.GET_SIGNATURES).signatures?.firstOrNull()
+        sig?.let { fingerprint(it.toByteArray()) }
+    } catch (e: Exception) { logw("empreinte du certificat illisible", e); null }
 
     /** Interroge GitHub (dernière release publiée) et compare à la version installée. À appeler hors du thread principal. */
     fun check(current: String): Result = try {
@@ -78,6 +98,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val version = remember { Updater.currentVersion(ctx) }
+    val cert = remember { Updater.signingFingerprint(ctx) }
     var checking by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<Updater.Result?>(null) }
     fun open(url: String) {
@@ -88,7 +109,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(ctx.getString(R.string.app_name)) },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(ctx.getString(R.string.about_version, version), style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.height(6.dp))
                 Text(ctx.getString(R.string.about_license), style = MaterialTheme.typography.bodySmall)
@@ -111,6 +132,13 @@ fun AboutDialog(onDismiss: () -> Unit) {
                         }
                         Updater.Result.NoRelease -> Text(ctx.getString(R.string.update_none), style = MaterialTheme.typography.bodyMedium)
                         Updater.Result.Error -> Text(ctx.getString(R.string.update_error), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                if (cert != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(ctx.getString(R.string.about_cert), style = MaterialTheme.typography.labelSmall)
+                    SelectionContainer {
+                        Text(cert, style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                     }
                 }
                 Spacer(Modifier.height(8.dp))

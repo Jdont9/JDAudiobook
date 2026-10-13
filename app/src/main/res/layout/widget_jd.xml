@@ -1,16 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget « grand » (≥ 2 cases de haut) : pochette, titre du livre, fichier en cours, temps, barre de progression et 5 commandes. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
     android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="horizontal" android:gravity="center_vertical"
-    android:background="#BA1A1A" android:padding="10dp">
-    <ImageView android:id="@+id/w_cover" android:layout_width="48dp" android:layout_height="48dp"
-        android:background="#FFFFFF" android:scaleType="centerCrop"/>
-    <TextView android:id="@+id/w_title" android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="1" android:layout_marginStart="10dp" android:textColor="#FFFFFF"
-        android:maxLines="2" android:ellipsize="end" android:text="JD Audiobook Reader"/>
-    <ImageButton android:id="@+id/w_prev" android:layout_width="36dp" android:layout_height="36dp"
-        android:src="@drawable/ic_prev" android:background="@android:color/transparent"/>
-    <ImageButton android:id="@+id/w_play" android:layout_width="40dp" android:layout_height="40dp"
-        android:src="@drawable/ic_play" android:background="@android:color/transparent"/>
-    <ImageButton android:id="@+id/w_next" android:layout_width="36dp" android:layout_height="36dp"
-        android:src="@drawable/ic_next" android:background="@android:color/transparent"/>
+    android:orientation="vertical" android:gravity="center_vertical"
+    android:background="@drawable/widget_bg" android:padding="14dp">
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical">
+        <ImageView android:id="@+id/w_cover" android:layout_width="64dp" android:layout_height="64dp"
+            android:scaleType="centerCrop" android:src="@drawable/widget_cover_ph"
+            android:importantForAccessibility="no"/>
+        <LinearLayout
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="12dp" android:orientation="vertical">
+            <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textColor="@color/widget_on_bg" android:textSize="15sp" android:textStyle="bold"
+                android:maxLines="2" android:ellipsize="end" android:text="@string/app_name"/>
+            <TextView android:id="@+id/w_sub" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:textColor="@color/widget_on_bg_variant" android:textSize="12sp"
+                android:maxLines="1" android:ellipsize="end"/>
+            <TextView android:id="@+id/w_time" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:textColor="@color/widget_on_bg_variant" android:textSize="12sp"
+                android:maxLines="1"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <ProgressBar android:id="@+id/w_progress" style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="10dp"
+        android:max="1000" android:progress="0" android:indeterminate="false"
+        android:progressTint="@color/widget_accent" android:progressBackgroundTint="@color/widget_track"/>
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:orientation="horizontal" android:gravity="center_vertical">
+        <ImageButton android:id="@+id/w_prev" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1"
+            android:src="@drawable/w_prev" android:scaleType="centerInside" android:padding="10dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="@string/previous"/>
+        <ImageButton android:id="@+id/w_back" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1"
+            android:src="@drawable/w_back10" android:scaleType="centerInside" android:padding="9dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="@string/widget_back10"/>
+        <FrameLayout android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1.3">
+            <ImageButton android:id="@+id/w_play" android:layout_width="52dp" android:layout_height="52dp"
+                android:layout_gravity="center" android:src="@drawable/w_play" android:scaleType="centerInside" android:padding="13dp"
+                android:background="@drawable/widget_play_bg" android:contentDescription="@string/play"/>
+        </FrameLayout>
+        <ImageButton android:id="@+id/w_fwd" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1"
+            android:src="@drawable/w_fwd10" android:scaleType="centerInside" android:padding="9dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="@string/widget_fwd10"/>
+        <ImageButton android:id="@+id/w_next" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1"
+            android:src="@drawable/w_next" android:scaleType="centerInside" android:padding="10dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" android:contentDescription="@string/next"/>
+    </LinearLayout>
 </LinearLayout>

@@ -45,6 +45,7 @@ fun LibraryScreen(
     var showCovers by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     Column {
         Surface(color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -81,6 +82,10 @@ fun LibraryScreen(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.refresh_library)) }, leadingIcon = { Icon(JdIcons.Refresh, contentDescription = null) },
                             enabled = scanProgress == null, onClick = { menuOpen = false; onRefresh() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.settings_title)) }, leadingIcon = { Icon(JdIcons.Settings, contentDescription = null) },
+                            onClick = { menuOpen = false; showSettings = true }
                         )
                         HorizontalDivider()
                         DropdownMenuItem(
@@ -188,6 +193,7 @@ fun LibraryScreen(
         MiniPlayer(books, onOpen = onShow, onClose = onCloseMini)
         if (showCovers) MissingCoversDialog(books, store, onCover = onCoverFound, onDismiss = { showCovers = false })
         if (showAbout) AboutDialog { showAbout = false }
+        if (showSettings) SettingsDialog(store) { showSettings = false }
         if (showSkip) SkipDialog(onPick = { Skip.seconds = it; store.setSkipSeconds(it); showSkip = false }, onDismiss = { showSkip = false })
     }
 }
