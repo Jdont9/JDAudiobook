@@ -132,7 +132,7 @@ jobs:
       attestations: write   # stores it on GitHub
     steps:
       - name: Download the signed APK
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: audiobooks-release
           path: dist
