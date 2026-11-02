@@ -59,5 +59,5 @@ dependencies {
     implementation("com.google.guava:guava:33.7.2-android")
     testImplementation("junit:junit:4.13.2")
     // Vraie implémentation d'org.json pour les tests unitaires (celle d'android.jar n'est qu'une coquille vide).
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
 }
