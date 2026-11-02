@@ -140,7 +140,7 @@ jobs:
       # Proves the APK on the release page was built by this workflow from this commit
       # (check with: gh attestation verify JDAudiobook-X.Y.Z.apk --repo Jdont9/JDAudiobook).
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/*.apk
 
