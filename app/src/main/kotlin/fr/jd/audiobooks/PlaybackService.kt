@@ -134,6 +134,8 @@ class PlaybackService : MediaLibraryService() {
         /** Jeton joint par le widget : le service est exporté (Android Auto, notification…), donc ces commandes
          *  ne sont acceptées que si elles portent le jeton secret de l'appli. */
         const val EXTRA_TOKEN = "fr.jd.audiobooks.TOKEN"
+        /** Écrans de voiture : à leur connexion, le dernier livre non terminé est préchargé (en pause) pour que « Lecture en cours » s'ouvre dessus. */
+        private val CAR_CLIENTS = setOf("com.google.android.projection.gearhead", "com.android.car.media")
         private val ACTIONS = setOf(ACTION_PLAY_PAUSE, ACTION_NEXT, ACTION_PREV, ACTION_BACK10, ACTION_FWD10)
         /** Clients médias autorisés en plus des composants système de confiance (isTrusted) et de l'appli elle-même. */
         private val ALLOWED_CLIENTS = setOf(
@@ -189,6 +191,33 @@ class PlaybackService : MediaLibraryService() {
                 throw e
             } catch (e: Exception) { logw("reprise du dernier livre", e) }
         }
+    }
+
+    /** Android Auto s'ouvre comme l'appli : sur le dernier livre non terminé (chargé en pause, à sa position), ou sur
+     *  l'accueil (bibliothèque) si ce livre est terminé ou s'il n'y en a pas. */
+    private fun prepareForCar() {
+        val pl = player ?: return
+        // Livre fini resté dans le lecteur (lecture arrivée à la fin) : on le vide, sinon Android Auto afficherait un livre terminé.
+        if (pl.mediaItemCount > 0 && pl.playbackState == Player.STATE_ENDED) pl.clearMediaItems()
+        if (pl.mediaItemCount > 0) return
+        scope.launch {
+            try {
+                val bk = lastBookOrNull() ?: return@launch
+                if (pl.mediaItemCount > 0) return@launch // un livre a été lancé entre-temps
+                val l = loadBook(bk)
+                markFreshStart(store.load(bk.path)?.updated ?: 0L)
+                pl.setMediaItems(l.items, l.index, l.pos)
+                pl.setPlaybackSpeed(safeSpeed(l.speed))
+                pl.prepare() // pas de play() : on attend l'appui de l'utilisateur
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) { logw("préchargement Android Auto", e) }
+        }
+    }
+
+    private fun fmtHm(ms: Long): String {
+        val m = (ms / 60_000).coerceAtLeast(0)
+        return if (m < 60) "$m min" else "${m / 60} h %02d".format(m % 60)
     }
 
     /** Future alimenté par une coroutine : une exception ou une annulation termine le future (au lieu de le laisser
@@ -265,6 +294,7 @@ class PlaybackService : MediaLibraryService() {
         // la bibliothèque ou piloter la lecture : une autre appli installée ne peut plus lister tes livres.
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
             if (isAllowedClient(controller)) {
+                if (controller.packageName in CAR_CLIENTS) prepareForCar()
                 // Boutons ±10 s (Android Auto, notification) : commandes personnalisées à déclarer au client.
                 val cmds = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                     .apply { customActions.forEach { add(SessionCommand(it.first, Bundle.EMPTY)) } }.build()
@@ -398,13 +428,69 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /** Session exposée à la notification, à l'écran de verrouillage et à Android Auto : les boutons de saut utilisent
-     *  la durée réglée par l'utilisateur (Skip). L'appli, elle, pilote directement l'ExoPlayer. */
-    private class SkipPlayer(p: Player) : ForwardingPlayer(p) {
+     *  la durée réglée par l'utilisateur (Skip). L'appli, elle, pilote directement l'ExoPlayer.
+     *  Quand les durées de tous les fichiers du livre sont connues (calculées par l'écran lecteur), la session expose une
+     *  chronologie du LIVRE ENTIER : la barre d'Android Auto affiche le temps écouté / la durée totale du livre, et
+     *  « Reste … » est ajouté à la ligne de l'artiste. Sinon, comportement habituel (position dans le fichier). */
+    private inner class SkipPlayer(p: Player) : ForwardingPlayer(p) {
+        private val raw = HashSet<Player.Listener>()
+        private var cPath: String? = null
+        private var cDurs: List<Long> = emptyList()
+        private var cAt = 0L
+
+        override fun addListener(listener: Player.Listener) { raw.add(listener); super.addListener(listener) }
+        override fun removeListener(listener: Player.Listener) { raw.remove(listener); super.removeListener(listener) }
+
+        /** Durées des fichiers du livre en cours si elles sont TOUTES connues, sinon null. */
+        private fun durs(): List<Long>? {
+            val w = wrappedPlayer
+            val path = w.currentMediaItem?.mediaMetadata?.extras?.getString("path") ?: return null
+            val n = w.mediaItemCount
+            val complete = cDurs.size == n && cDurs.all { it > 0 }
+            val now = SystemClock.elapsedRealtime()
+            if (path != cPath || (!complete && now - cAt > 5_000)) {
+                cAt = now
+                val bk = store.cachedBooksInMemory()?.firstOrNull { it.path == path } ?: return null
+                cPath = path; cDurs = store.durations(bk)
+            }
+            return cDurs.takeIf { it.size == n && n > 0 && it.all { d -> d > 0 } }
+        }
+
+        private fun before(d: List<Long>): Long = d.take(wrappedPlayer.currentMediaItemIndex).sum()
+
+        override fun getDuration(): Long = durs()?.sum() ?: super.getDuration()
+        override fun getContentDuration(): Long = durs()?.sum() ?: super.getContentDuration()
+        override fun getCurrentPosition(): Long = durs()?.let { before(it) + super.getCurrentPosition() } ?: super.getCurrentPosition()
+        override fun getContentPosition(): Long = durs()?.let { before(it) + super.getContentPosition() } ?: super.getContentPosition()
+        override fun getBufferedPosition(): Long = durs()?.let { before(it) + super.getBufferedPosition() } ?: super.getBufferedPosition()
+        override fun getContentBufferedPosition(): Long = durs()?.let { before(it) + super.getContentBufferedPosition() } ?: super.getContentBufferedPosition()
+
+        /** Déplacement sur la barre d'Android Auto : position dans le livre entier -> bon fichier + bonne position. */
+        override fun seekTo(positionMs: Long) {
+            val d = durs() ?: return super.seekTo(positionMs)
+            var rem = positionMs.coerceIn(0L, d.sum())
+            var i = 0
+            while (i < d.lastIndex && rem >= d[i]) { rem -= d[i]; i++ }
+            wrappedPlayer.seekTo(i, rem)
+        }
+
+        override fun getMediaMetadata(): MediaMetadata {
+            val m = super.getMediaMetadata()
+            val d = durs() ?: return m
+            val left = (d.sum() - (before(d) + wrappedPlayer.currentPosition)).coerceAtLeast(0L)
+            val book = wrappedPlayer.currentMediaItem?.mediaMetadata?.extras?.getString("book") ?: m.artist?.toString() ?: ""
+            return m.buildUpon().setArtist("$book · ${getString(R.string.remaining_short, fmtHm(left))}").build()
+        }
+
+        /** Prévient la session (donc Android Auto) que le « Reste … » a changé. */
+        fun refreshMetadata() { val md = mediaMetadata; raw.toList().forEach { it.onMediaMetadataChanged(md) } }
+
         override fun getSeekBackIncrement(): Long = Skip.ms
         override fun getSeekForwardIncrement(): Long = Skip.ms
         override fun seekBack() { wrappedPlayer.skipBack() }
         override fun seekForward() { wrappedPlayer.skipForward() }
     }
+    private var skipPlayer: SkipPlayer? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -483,13 +569,14 @@ class PlaybackService : MediaLibraryService() {
                     if (playTicks % 5 == 0) persist(false)
                 }
                 if (playTicks % 15 == 0) scheduleWidget() // barre de progression du widget
+                if (playTicks % 30 == 0) skipPlayer?.refreshMetadata() // « Reste … » d'Android Auto
                 h.postDelayed(this, 1000)
             }
         }
         if (p.isPlaying) startTicking()
         player = p
         self = this
-        session = MediaLibrarySession.Builder(this, SkipPlayer(p), libraryCallback).setCustomLayout(customLayout()).build()
+        session = MediaLibrarySession.Builder(this, SkipPlayer(p).also { skipPlayer = it }, libraryCallback).setCustomLayout(customLayout()).build()
     }
 
     override fun onGetSession(c: MediaSession.ControllerInfo) = session
@@ -506,6 +593,7 @@ class PlaybackService : MediaLibraryService() {
         Dynamics.release()
         Eq.release()
         self = null
+        skipPlayer = null
         h.removeCallbacksAndMessages(null)
         scope.cancel()
         session?.release(); player?.release(); player = null

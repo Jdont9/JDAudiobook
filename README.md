@@ -4,7 +4,7 @@
 
 A simple, fast audiobook player for Android that plays your files (MP3, M4B…) straight from a folder on your phone. No account, no ads, no tracking.
 
-Written in Kotlin with Jetpack Compose and Media3. Version **1.5.2**. The app is available in **English and French** (it follows your phone's language).
+Written in Kotlin with Jetpack Compose and Media3. Version **1.5.3**. The app is available in **English and French** (it follows your phone's language).
 
 > 🤖 **Built by an AI.** The code, documentation and scripts in this repository were written by an artificial intelligence (Claude, by Anthropic) from the requests and feedback of the project's owner, who directed the development and uses the app. Like any software it may contain bugs; it is provided as is, without warranty.
 
@@ -29,7 +29,7 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.5.2**. The app is
 - **Mini player** at the bottom of the library whenever a book is loaded: cover, title, back (skip duration), play/pause, close. Tapping it reopens the player without reloading anything.
 - **Back** (system button, gesture, or the in-app button) returns to the library: playback keeps going and the app stays open. The ✕ on the mini player stops playback.
 - **Bookmarks export**: a Share button in the bookmarks list sends them as Markdown text (notes, messages…).
-- Background playback with a notification and lock-screen controls; usable from **Android Auto** (a **Resume** entry at the top, and voice or text **search** of your books, e.g. “play Germinal”); the **play button of a Bluetooth headset or a car** resumes your last book even when the app is closed.
+- Background playback with a notification and lock-screen controls; usable from **Android Auto** (it opens on your **last book**, or on the library if it is finished; the progress bar shows the **whole book** — time listened, total and remaining —; a **Resume** entry at the top, and voice or text **search** of your books, e.g. “play Germinal”); the **play button of a Bluetooth headset or a car** resumes your last book even when the app is closed.
 - **Home-screen widget** in two sizes that adapt when you resize it: large (rounded cover, book title, current file, time, progress bar, previous / −10 s / play-pause / +10 s / next) and compact (cover, title, previous / play-pause / next, thin progress bar). It follows your system colors (Material You, light and dark) on Android 12+ and the app's red before. Tap the cover or the title to open the app; with nothing loaded, ▶ resumes the last book.
 
 **Settings** (menu → Settings)
@@ -46,7 +46,7 @@ Written in Kotlin with Jetpack Compose and Media3. Version **1.5.2**. The app is
 
 ## Install
 
-1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.5.2.apk` on your phone.
+1. Open the repository's [**Releases** page](https://github.com/Jdont9/JDAudiobook/releases) and download `JDAudiobook-1.5.3.apk` on your phone.
 2. Open the file. Android will ask you to allow installs from that source (your browser or file manager): accept.
 3. Launch the app, open the menu (**gear icon**, top right) → **Choose the books folder**. Grant access, including write access (needed for progress and covers).
 

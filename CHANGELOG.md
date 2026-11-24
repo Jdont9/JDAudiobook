@@ -2,6 +2,11 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.5.3
+**New**
+- Android Auto: the progress bar now shows the **whole book** (time listened / total duration) instead of the current file only, and the artist line adds **"Remaining …"** (refreshed every 30 s). Seeking on the bar jumps to the right file. This needs the durations of all the book's files, which the player screen computes the first time you open the book; until then Android Auto shows the file position as before.
+- Android Auto now opens on **the last book you listened to** (loaded paused, at its saved position), like the app. If that book is finished, or there is none, it opens on the library home.
+
 ## 1.5.2
 **Fixes**
 - A finished book is no longer resumed from its start by the widget's ▶, a Bluetooth headset or car play button, or the Android Auto "Resume" entry: nothing happens (the widget then invites you to open the app). Same rule as at launch.

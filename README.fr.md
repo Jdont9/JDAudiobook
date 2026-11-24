@@ -4,7 +4,7 @@
 
 Lecteur de livres audio pour Android, simple et rapide, qui lit directement vos fichiers (MP3, M4B…) depuis un dossier de votre téléphone. Pas de compte, pas de publicité, pas de suivi.
 
-Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.5.2**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
+Écrit en Kotlin avec Jetpack Compose et Media3. Version **1.5.3**. L'appli est disponible en **français et en anglais** (selon la langue du téléphone).
 
 > 🤖 **Projet réalisé par une IA.** Le code, la documentation et les scripts de ce dépôt ont été écrits par une intelligence artificielle (Claude, d'Anthropic) à partir des demandes et des retours du propriétaire du projet, qui a dirigé le développement et utilise l'appli. Comme tout logiciel, elle peut contenir des erreurs : elle est fournie telle quelle, sans garantie.
 
@@ -29,7 +29,7 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement vos 
 - **Mini-lecteur** en bas de la bibliothèque dès qu'un livre est chargé : pochette, titre, recul (durée du saut), lecture/pause, fermer. Un appui rouvre le lecteur sans rien recharger.
 - **Retour** (bouton ou geste du système, bouton de l'appli) : revient à la bibliothèque, la lecture continue et l'appli reste ouverte. Le ✕ du mini-lecteur arrête la lecture.
 - **Export des signets** : un bouton Partager dans la liste des signets les envoie en texte Markdown (notes, messagerie…).
-- Lecture en arrière-plan avec notification et commandes de l'écran verrouillé ; utilisable depuis **Android Auto** (une entrée **Reprendre** en tête, et **recherche** vocale ou écrite de vos livres, par ex. « lis Germinal ») ; la touche **lecture d'un casque Bluetooth ou d'une voiture** reprend votre dernier livre même appli fermée.
+- Lecture en arrière-plan avec notification et commandes de l'écran verrouillé ; utilisable depuis **Android Auto** (il s'ouvre sur votre **dernier livre**, ou sur la bibliothèque s'il est terminé ; la barre de progression montre **le livre entier** — temps écouté, total et restant — ; une entrée **Reprendre** en tête, et **recherche** vocale ou écrite de vos livres, par ex. « lis Germinal ») ; la touche **lecture d'un casque Bluetooth ou d'une voiture** reprend votre dernier livre même appli fermée.
 - **Widget d'écran d'accueil** en deux tailles qui s'adaptent quand vous le redimensionnez : grand (pochette arrondie, titre du livre, fichier en cours, temps, barre de progression, précédent / −10 s / lecture-pause / +10 s / suivant) et compact (pochette, titre, précédent / lecture-pause / suivant, fine barre de progression). Il suit les couleurs du système (Material You, clair et sombre) dès Android 12, et le rouge de l'appli avant. Un appui sur la pochette ou le titre ouvre l'appli ; sans livre chargé, ▶ reprend le dernier livre.
 
 **Réglages** (menu → Réglages)
@@ -46,7 +46,7 @@ Lecteur de livres audio pour Android, simple et rapide, qui lit directement vos 
 
 ## Installation
 
-1. Ouvrez la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et téléchargez `JDAudiobook-1.5.2.apk` sur votre téléphone.
+1. Ouvrez la [page **Releases**](https://github.com/Jdont9/JDAudiobook/releases) du dépôt GitHub et téléchargez `JDAudiobook-1.5.3.apk` sur votre téléphone.
 2. Ouvrez le fichier. Android vous demandera d'autoriser l'installation depuis cette source (navigateur ou gestionnaire de fichiers) : acceptez.
 3. Lancez l'appli, ouvrez le menu (**icône engrenage**, en haut à droite) → **Choisir le dossier des livres**. Autorisez l'accès, y compris en écriture (nécessaire pour la progression et les pochettes).
 

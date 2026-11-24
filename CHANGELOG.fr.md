@@ -2,6 +2,11 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.5.3
+**Nouveautés**
+- Android Auto : la barre de progression affiche maintenant **le livre entier** (temps écouté / durée totale) au lieu du seul fichier en cours, et la ligne de l'artiste ajoute **« Reste … »** (rafraîchi toutes les 30 s). Se déplacer sur la barre saute au bon fichier. Cela demande les durées de tous les fichiers du livre, calculées par l'écran lecteur la première fois qu'on ouvre le livre ; en attendant, Android Auto affiche la position dans le fichier comme avant.
+- Android Auto s'ouvre maintenant sur **le dernier livre écouté** (chargé en pause, à sa position enregistrée), comme l'appli. Si ce livre est terminé, ou s'il n'y en a pas, il s'ouvre sur l'accueil (bibliothèque).
+
 ## 1.5.2
 **Corrections**
 - Un livre terminé n'est plus relancé depuis son début par le ▶ du widget, la touche lecture d'un casque Bluetooth ou d'une voiture, ni l'entrée « Reprendre » d'Android Auto : rien ne démarre (le widget invite alors à ouvrir l'appli). Même règle qu'au lancement.
