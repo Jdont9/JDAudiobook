@@ -2,6 +2,15 @@
 
 🇬🇧 [In English](CHANGELOG.md)
 
+## 1.5.4
+**Nouveautés**
+- Android Auto : la barre de progression défile maintenant sur **le chapitre en cours** au lieu du livre entier. Pour un fichier à **chapitres internes** (.m4b / .m4a, ou .mp3 à balise ID3), le titre affiché est celui du chapitre et la barre va de 0 à la durée du chapitre ; pour un livre sans chapitres internes, le « chapitre » est le fichier. Se déplacer sur la barre se déplace dans le chapitre.
+- Android Auto : **précédent / suivant changent de chapitre** (puis de fichier quand il n'y a plus de chapitre dans le fichier). Le précédent ne ramène plus au début du chapitre ou du fichier en cours : il va au chapitre précédent.
+- Le **temps restant du livre** (« Reste … ») reste affiché sous le titre.
+
+**Améliorations**
+- Android Auto : le temps restant n'est plus rafraîchi toutes les 30 s (ce qui pouvait provoquer une notification du mini-lecteur). Titre, « Reste … » et durée ne sont envoyés à Android Auto qu'au **changement de chapitre ou de fichier**.
+
 ## 1.5.3
 **Nouveautés**
 - Android Auto : la barre de progression affiche maintenant **le livre entier** (temps écouté / durée totale) au lieu du seul fichier en cours, et la ligne de l'artiste ajoute **« Reste … »** (rafraîchi toutes les 30 s). Se déplacer sur la barre saute au bon fichier. Cela demande les durées de tous les fichiers du livre, calculées par l'écran lecteur la première fois qu'on ouvre le livre ; en attendant, Android Auto affiche la position dans le fichier comme avant.

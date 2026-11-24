@@ -2,6 +2,15 @@
 
 🇫🇷 [En français](CHANGELOG.fr.md)
 
+## 1.5.4
+**New**
+- Android Auto: the progress bar now runs over the **current chapter** instead of the whole book. For a file with **internal chapters** (.m4b / .m4a, or .mp3 with an ID3 tag), the displayed title is the chapter's and the bar goes from 0 to the chapter's length; for a book without internal chapters, the “chapter” is the file. Seeking on the bar moves within the chapter.
+- Android Auto: **previous / next switch chapters** (then files once the file has no more chapters). Previous no longer goes back to the start of the current chapter or file: it goes to the previous chapter.
+- The **remaining time of the book** (“Remaining …”) stays displayed under the title.
+
+**Improvements**
+- Android Auto: the remaining time is no longer refreshed every 30 s (which could trigger a mini-player notification). Title, “Remaining …” and length are only sent to Android Auto on a **chapter or file change**.
+
 ## 1.5.3
 **New**
 - Android Auto: the progress bar now shows the **whole book** (time listened / total duration) instead of the current file only, and the artist line adds **"Remaining …"** (refreshed every 30 s). Seeking on the bar jumps to the right file. This needs the durations of all the book's files, which the player screen computes the first time you open the book; until then Android Auto shows the file position as before.

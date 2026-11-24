@@ -429,14 +429,21 @@ class PlaybackService : MediaLibraryService() {
 
     /** Session exposée à la notification, à l'écran de verrouillage et à Android Auto : les boutons de saut utilisent
      *  la durée réglée par l'utilisateur (Skip). L'appli, elle, pilote directement l'ExoPlayer.
-     *  Quand les durées de tous les fichiers du livre sont connues (calculées par l'écran lecteur), la session expose une
-     *  chronologie du LIVRE ENTIER : la barre d'Android Auto affiche le temps écouté / la durée totale du livre, et
-     *  « Reste … » est ajouté à la ligne de l'artiste. Sinon, comportement habituel (position dans le fichier). */
+     *  Android Auto voit un CHAPITRE à la fois : pour un fichier à chapitres internes (.m4b/.m4a, .mp3 à balise ID3),
+     *  la barre défile sur le chapitre en cours et précédent / suivant passent d'un chapitre à l'autre (puis d'un fichier
+     *  à l'autre) ; pour un livre sans chapitres internes, le « chapitre » est le fichier.
+     *  Quand les durées de tous les fichiers du livre sont connues (calculées par l'écran lecteur), « Reste … » (temps
+     *  restant du LIVRE) est ajouté à la ligne de l'artiste. Ce texte n'est calculé qu'à la demande et n'est poussé aux
+     *  clients (donc au mini-lecteur d'Android Auto) qu'aux changements de chapitre : jamais périodiquement. */
     private inner class SkipPlayer(p: Player) : ForwardingPlayer(p) {
         private val raw = HashSet<Player.Listener>()
         private var cPath: String? = null
         private var cDurs: List<Long> = emptyList()
         private var cAt = 0L
+        // Chapitres internes du fichier en cours (clé « livre|index du fichier »), lus en arrière-plan.
+        private var chKey: String? = null
+        private var chaps: List<Chap> = emptyList()
+        private var lastCi = -1
 
         override fun addListener(listener: Player.Listener) { raw.add(listener); super.addListener(listener) }
         override fun removeListener(listener: Player.Listener) { raw.remove(listener); super.removeListener(listener) }
@@ -458,32 +465,116 @@ class PlaybackService : MediaLibraryService() {
 
         private fun before(d: List<Long>): Long = d.take(wrappedPlayer.currentMediaItemIndex).sum()
 
-        override fun getDuration(): Long = durs()?.sum() ?: super.getDuration()
-        override fun getContentDuration(): Long = durs()?.sum() ?: super.getContentDuration()
-        override fun getCurrentPosition(): Long = durs()?.let { before(it) + super.getCurrentPosition() } ?: super.getCurrentPosition()
-        override fun getContentPosition(): Long = durs()?.let { before(it) + super.getContentPosition() } ?: super.getContentPosition()
-        override fun getBufferedPosition(): Long = durs()?.let { before(it) + super.getBufferedPosition() } ?: super.getBufferedPosition()
-        override fun getContentBufferedPosition(): Long = durs()?.let { before(it) + super.getContentBufferedPosition() } ?: super.getContentBufferedPosition()
-
-        /** Déplacement sur la barre d'Android Auto : position dans le livre entier -> bon fichier + bonne position. */
-        override fun seekTo(positionMs: Long) {
-            val d = durs() ?: return super.seekTo(positionMs)
-            var rem = positionMs.coerceIn(0L, d.sum())
-            var i = 0
-            while (i < d.lastIndex && rem >= d[i]) { rem -= d[i]; i++ }
-            wrappedPlayer.seekTo(i, rem)
+        /** Chapitres du fichier en cours ; vide tant qu'ils ne sont pas lus (ou s'il n'y en a pas). */
+        private fun chapters(): List<Chap> {
+            val w = wrappedPlayer
+            val item = w.currentMediaItem ?: return emptyList()
+            val key = "${item.mediaMetadata.extras?.getString("path")}|${w.currentMediaItemIndex}"
+            if (key == chKey) return chaps
+            chKey = key; chaps = emptyList()
+            val ext = item.mediaMetadata.title?.toString()?.substringAfterLast('.', "")?.lowercase()
+            val uri = item.localConfiguration?.uri?.toString()
+            if (uri != null && ext in setOf("m4b", "m4a", "mp4", "mp3")) scope.launch {
+                val l = withContext(Dispatchers.IO) {
+                    // Un chapitre sans titre reçoit « Chapitre N », comme dans l'écran lecteur.
+                    Chapters.read(this@PlaybackService, uri).mapIndexed { i, c -> if (c.title.isBlank()) c.copy(title = getString(R.string.chapter_n, i + 1)) else c }
+                }
+                if (key == chKey && l.isNotEmpty()) { chaps = l; lastCi = chIndex(l, wrappedPlayer.currentPosition); pushChapterState(true) }
+            }
+            return chaps
         }
+
+        /** Indice du chapitre contenant [pos] (recherche dichotomique : appelée très souvent par la session). */
+        private fun chIndex(c: List<Chap>, pos: Long): Int {
+            var lo = 0; var hi = c.lastIndex; var r = 0
+            while (lo <= hi) { val m = (lo + hi) ushr 1; if (c[m].startMs <= pos) { r = m; lo = m + 1 } else hi = m - 1 }
+            return r
+        }
+        private fun chStart(c: List<Chap>, i: Int): Long = if (i == 0) 0L else c[i].startMs
+        /** Fin du chapitre i (= début du suivant, ou fin du fichier) ; -1 si la durée du fichier n'est pas encore connue. */
+        private fun chEnd(c: List<Chap>, i: Int): Long =
+            if (i < c.lastIndex) c[i + 1].startMs else wrappedPlayer.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: -1L
+
+        // La barre d'Android Auto suit le CHAPITRE en cours (position et durée relatives à son début) ; sans chapitres
+        // internes, on laisse les valeurs natives (le fichier).
+        override fun getDuration(): Long {
+            val c = chapters(); if (c.isEmpty()) return super.getDuration()
+            val i = chIndex(c, wrappedPlayer.currentPosition)
+            val end = chEnd(c, i); if (end < 0) return super.getDuration()
+            return (end - chStart(c, i)).coerceAtLeast(0L)
+        }
+        override fun getContentDuration(): Long = getDuration()
+        private fun rel(abs: Long): Long {
+            val c = chapters(); if (c.isEmpty()) return abs
+            return (abs - chStart(c, chIndex(c, wrappedPlayer.currentPosition))).coerceAtLeast(0L)
+        }
+        override fun getCurrentPosition(): Long = rel(super.getCurrentPosition())
+        override fun getContentPosition(): Long = rel(super.getContentPosition())
+        override fun getBufferedPosition(): Long = rel(super.getBufferedPosition())
+        override fun getContentBufferedPosition(): Long = rel(super.getContentBufferedPosition())
+
+        /** Déplacement sur la barre d'Android Auto : position dans le chapitre -> position dans le fichier. */
+        override fun seekTo(positionMs: Long) {
+            val c = chapters()
+            if (c.isEmpty()) return super.seekTo(positionMs)
+            wrappedPlayer.seekTo(chStart(c, chIndex(c, wrappedPlayer.currentPosition)) + positionMs.coerceAtLeast(0L))
+        }
+
+        /** Suivant : chapitre suivant du fichier, sinon fichier suivant. */
+        override fun seekToNext() {
+            val w = wrappedPlayer; val c = chapters()
+            if (c.isNotEmpty()) { val i = chIndex(c, w.currentPosition); if (i < c.lastIndex) { w.seekTo(c[i + 1].startMs); return } }
+            if (w.hasNextMediaItem()) w.seekToNextMediaItem()
+        }
+        /** Précédent : chapitre précédent du fichier, sinon fichier précédent (jamais « retour au début du chapitre en cours »). */
+        override fun seekToPrevious() {
+            val w = wrappedPlayer; val c = chapters()
+            if (c.isNotEmpty()) { val i = chIndex(c, w.currentPosition); if (i > 0) { w.seekTo(c[i - 1].startMs); return } }
+            if (w.currentMediaItemIndex > 0) w.seekToPreviousMediaItem() else w.seekTo(0L)
+        }
+        override fun getAvailableCommands(): Player.Commands {
+            val b = super.getAvailableCommands().buildUpon()
+            if (wrappedPlayer.mediaItemCount > 1 || chapters().size > 1) b.addAll(Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_NEXT)
+            return b.build()
+        }
+        override fun isCommandAvailable(command: Int): Boolean = availableCommands.contains(command)
 
         override fun getMediaMetadata(): MediaMetadata {
             val m = super.getMediaMetadata()
-            val d = durs() ?: return m
-            val left = (d.sum() - (before(d) + wrappedPlayer.currentPosition)).coerceAtLeast(0L)
-            val book = wrappedPlayer.currentMediaItem?.mediaMetadata?.extras?.getString("book") ?: m.artist?.toString() ?: ""
-            return m.buildUpon().setArtist("$book · ${getString(R.string.remaining_short, fmtHm(left))}").build()
+            val b = m.buildUpon()
+            val c = chapters()
+            if (c.isNotEmpty()) b.setTitle(c[chIndex(c, wrappedPlayer.currentPosition)].title)
+            val d = durs()
+            if (d != null) {
+                val left = (d.sum() - (before(d) + wrappedPlayer.currentPosition)).coerceAtLeast(0L)
+                val book = wrappedPlayer.currentMediaItem?.mediaMetadata?.extras?.getString("book") ?: m.artist?.toString() ?: ""
+                b.setArtist("$book · ${getString(R.string.remaining_short, fmtHm(left))}")
+            }
+            return b.build()
         }
 
-        /** Prévient la session (donc Android Auto) que le « Reste … » a changé. */
-        fun refreshMetadata() { val md = mediaMetadata; raw.toList().forEach { it.onMediaMetadataChanged(md) } }
+        /** Appelée chaque seconde pendant la lecture : détecte le passage à un autre chapitre du fichier. Ne pousse
+         *  quelque chose aux clients (Android Auto compris) qu'à ce moment-là, jamais à chaque tick. */
+        fun tick() {
+            val c = chapters()
+            val i = if (c.isEmpty()) -1 else chIndex(c, wrappedPlayer.currentPosition)
+            if (i == lastCi) return
+            val was = lastCi; lastCi = i
+            if (was >= 0 && i >= 0) pushChapterState(false)
+        }
+
+        /** Prévient les clients : titre, « Reste … », durée du chapitre (et, si [commands], boutons précédent/suivant). */
+        private fun pushChapterState(commands: Boolean) {
+            val md = mediaMetadata
+            val w = wrappedPlayer
+            val pos = currentPosition
+            val pi = Player.PositionInfo(null, w.currentMediaItemIndex, w.currentMediaItem, null, w.currentMediaItemIndex, pos, pos, C.INDEX_UNSET, C.INDEX_UNSET)
+            raw.toList().forEach {
+                if (commands) it.onAvailableCommandsChanged(availableCommands)
+                it.onMediaMetadataChanged(md)
+                it.onPositionDiscontinuity(pi, pi, Player.DISCONTINUITY_REASON_INTERNAL)
+            }
+        }
 
         override fun getSeekBackIncrement(): Long = Skip.ms
         override fun getSeekForwardIncrement(): Long = Skip.ms
@@ -569,7 +660,7 @@ class PlaybackService : MediaLibraryService() {
                     if (playTicks % 5 == 0) persist(false)
                 }
                 if (playTicks % 15 == 0) scheduleWidget() // barre de progression du widget
-                if (playTicks % 30 == 0) skipPlayer?.refreshMetadata() // « Reste … » d'Android Auto
+                skipPlayer?.tick() // changement de chapitre : seul moment où Android Auto est prévenu (titre, « Reste … », durée)
                 h.postDelayed(this, 1000)
             }
         }
